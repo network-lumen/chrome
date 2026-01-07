@@ -1,0 +1,49 @@
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import { nodePolyfills } from 'vite-plugin-node-polyfills'
+import path from 'path'
+
+import wasm from "vite-plugin-wasm";
+import topLevelAwait from "vite-plugin-top-level-await";
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [
+    react(),
+    wasm(),
+    topLevelAwait(),
+    nodePolyfills({
+      include: ['buffer', 'util', 'stream', 'process', 'path', 'os'],
+      overrides: {
+        fs: path.resolve(__dirname, 'src/mocks/fs.ts'),
+      },
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true,
+      },
+      protocolImports: true,
+    }),
+  ],
+  resolve: {
+    alias: {
+      stream: 'stream-browserify',
+      util: 'util',
+      url: path.resolve(__dirname, 'src/mocks/url.ts'),
+      'fs/promises': path.resolve(__dirname, 'src/mocks/fs.ts'),
+      fs: path.resolve(__dirname, 'src/mocks/fs.ts'),
+      path: 'path-browserify',
+    },
+  },
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        background: path.resolve(__dirname, 'src/background.ts'),
+      },
+      output: {
+        entryFileNames: '[name].js',
+      },
+    },
+  },
+})
