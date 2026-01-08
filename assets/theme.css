@@ -1,0 +1,320 @@
+/* iOS Style Components */
+.ios-card {
+  background: var(--surface);
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  box-shadow: var(--card-shadow);
+}
+
+/* ========================================
+   CHROME EXTENSION POPUP LAYOUT FIXES
+   ======================================== */
+
+/* Fixed popup dimensions - increased height for dropdown visibility */
+html, body {
+  width: 380px !important;
+  min-width: 380px !important;
+  height: 620px !important;
+  min-height: 620px !important;
+  max-height: 620px !important;
+  overflow: visible !important;
+  position: relative !important;
+}
+
+#root {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: visible !important;
+}
+
+/* Main app container */
+#root > div {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  max-height: 620px !important;
+  overflow: visible !important;
+  position: relative !important;
+}
+
+/* Header - fixed at top with overflow visible for dropdown */
+header {
+  flex-shrink: 0 !important;
+  position: relative !important;
+  z-index: 1000 !important;
+  overflow: visible !important;
+}
+
+/* Footer/Bottom Navigation - ALWAYS visible at bottom */
+footer {
+  flex-shrink: 0 !important;
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 100 !important;
+  min-height: 56px !important;
+  height: 56px !important;
+  background: var(--surface) !important;
+  border-top: 1px solid var(--border) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-around !important;
+}
+
+/* Add padding to main content to prevent footer overlap */
+#root > div,
+.bg-background.text-foreground {
+  padding-bottom: 60px !important;
+}
+
+/* Main content area - scrollable */
+main {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  min-height: 0 !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+/* ========================================
+   DROPDOWN/SETTINGS MENU FIX
+   ======================================== */
+
+/* Ensure dropdown menus are visible and not cut off */
+header .relative {
+  position: relative !important;
+  overflow: visible !important;
+}
+
+/* Settings dropdown menu - make it visible with high z-index */
+[class*="z-\[99999\]"],
+header [class*="absolute"][class*="right-0"],
+header [class*="absolute"][class*="top-full"],
+.z-50[class*="absolute"],
+[class*="absolute"][class*="bg-surface"][class*="rounded-xl"] {
+  z-index: 99999 !important;
+  position: absolute !important;
+  overflow: visible !important;
+}
+
+/* Ensure all parent containers allow overflow for dropdown */
+header, 
+header > div,
+header .relative,
+#root,
+#root > div,
+body {
+  overflow: visible !important;
+}
+
+/* But main content should still scroll */
+main {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* Fix dropdown backdrop */
+[class*="fixed"][class*="inset-0"][class*="z-\[99998\]"] {
+  z-index: 99998 !important;
+}
+
+.ios-button {
+  border-radius: 14px !important;
+  padding: 12px 24px !important;
+  font-weight: 600 !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+}
+
+.ios-button:active {
+  transform: scale(0.96);
+  opacity: 0.8;
+}
+
+.ios-input {
+  background: var(--surface) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: 14px !important;
+  padding: 14px 16px !important;
+  backdrop-filter: var(--ios-blur);
+  -webkit-backdrop-filter: var(--ios-blur);
+  transition: all 0.2s ease !important;
+}
+
+.ios-input:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1) !important;
+  outline: none;
+}
+
+/* Header with iOS blur effect */
+header, .bg-surface\/50, .bg-surface\/80 {
+  backdrop-filter: saturate(180%) blur(20px) !important;
+  -webkit-backdrop-filter: saturate(180%) blur(20px) !important;
+  border: 1px solid var(--card-border) !important;
+}
+
+/* Rounded corners iOS style */
+.rounded-2xl {
+  border-radius: 20px !important;
+}
+
+.rounded-xl {
+  border-radius: 16px !important;
+}
+
+.rounded-lg {
+  border-radius: 14px !important;
+}
+
+.rounded-md {
+  border-radius: 12px !important;
+}
+
+.rounded-full {
+  border-radius: 999px !important;
+}
+
+/* Button styles */
+button, .button {
+  border-radius: 14px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 600;
+}
+
+button:active:not(:disabled), .button:active {
+  transform: scale(0.96);
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+/* Input styles */
+input, textarea, select {
+  border-radius: 14px !important;
+  transition: all 0.2s ease;
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.08);
+}
+
+/* Card styles with glassmorphism */
+.p-6, .p-4, .p-3 {
+  background: var(--surface);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+/* Enhanced shadows */
+.shadow-lg {
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+.shadow-2xl {
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.shadow-sm {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Modal/Dialog blur backdrop */
+.bg-black\/50, .bg-black\/60, .bg-black\/80 {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Smooth animations */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* List items */
+.space-y-2 > *, .space-y-3 > *, .space-y-4 > * {
+  background: var(--surface);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-radius: 14px;
+}
+
+/* Scrollbar enhancement */
+::-webkit-scrollbar-thumb {
+  background: var(--surface-highlight);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gray-500);
+  background-clip: padding-box;
+}
+
+/* Transition improvements */
+.transition, .transition-all, .transition-colors {
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Border enhancements */
+.border, .border-2, .border-4 {
+  border-color: var(--card-border);
+}
+
+/* iOS-style focus ring */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+  border-radius: 14px;
+}
+
+/* Hover states for cards */
+.group:hover .group-hover\:bg-primary\/10,
+.group:hover .group-hover\:bg-primary\/30,
+.group:hover .group-hover\:bg-primary\/40 {
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+/* ========================================
+   HISTORY MODAL FIXES
+   ======================================== */
+
+/* History modal - ensure proper z-index and full screen coverage */
+.fixed.inset-0.z-50 {
+  z-index: 9999 !important;
+}
+
+/* History modal content - proper sizing in popup */
+.fixed.inset-0 > div[class*="max-w-sm"][class*="h-\[600px\]"] {
+  height: calc(100% - 32px) !important;
+  max-height: 580px !important;
+}
+
+/* Empty state in History - better centering */
+.flex-1.overflow-y-auto .flex.flex-col.items-center.justify-center.h-full {
+  min-height: 300px !important;
+}
+
+/* Force dark theme for all surfaces in dark mode */
+[data-theme="dark"] .bg-surface,
+:root .bg-surface {
+  background-color: var(--surface) !important;
+}
+
+/* Modal background overlay */
+.bg-black\/50 {
+  background-color: rgba(0, 0, 0, 0.6) !important;
+}

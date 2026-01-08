@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "Lumen Wallet",
+  "version": "1.0.0",
+  "description": "Non-custodial Lumen Chain wallet with Swap v1 support.",
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Lumen Wallet"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "sidePanel",
+    "scripting",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "http://142.132.201.187:1317/*",
+    "http://142.132.201.187:26657/*",
+    "http://142.132.201.187:9190/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "lumen-wallet@yourdomain.com",
+      "strict_min_version": "109.0"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "icons": {
+    "16": "icons/logo.png",
+    "48": "icons/logo.png",
+    "128": "icons/logo.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "*.wasm",
+        "dilithium3.wasm"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
