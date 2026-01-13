@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Buffer } from 'buffer';
 import { KeyManager, type LumenWallet, type PqcKeyData } from '../modules/sdk/key-manager';
 import { SetPassword } from './onboarding/SetPassword';
 import { VaultManager } from '../modules/vault/vault';
@@ -469,7 +470,18 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                             <p className="text-[10px] text-[var(--text-dim)] font-mono">Dilithium3</p>
                         </div>
                         <button
-                            onClick={() => downloadFile(JSON.stringify({ pqcKey: tempWallet.pqcKey || (tempWallet as any).pqc }, null, 2), `lumen-pqc-${tempWallet.address.slice(0, 8)}.json`)}
+                            onClick={() => {
+                                const keyData = tempWallet.pqcKey || (tempWallet as any).pqc;
+                                const exportData = {
+                                    pqcKey: {
+                                        ...keyData,
+                                        /* Convert Hex -> Base64 for consistent export format */
+                                        publicKey: Buffer.from(keyData.publicKey, 'hex').toString('base64'),
+                                        privateKey: Buffer.from(keyData.privateKey, 'hex').toString('base64')
+                                    }
+                                };
+                                downloadFile(JSON.stringify(exportData, null, 2), `lumen-pqc-${tempWallet.address.slice(0, 8)}.json`);
+                            }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${hasDownloaded ? 'bg-green-500/20 text-green-500' : 'bg-primary text-white hover:bg-primary/90'}`}
                         >
                             {hasDownloaded ? 'Downloaded' : 'Download JSON'}
