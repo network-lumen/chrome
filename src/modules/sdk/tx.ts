@@ -13,7 +13,7 @@ import type { LumenWallet } from './key-manager';
 /* Config */
 const CHAIN_ID = "lumen";
 const GAS_LIMIT = BigInt(200000);
-const DEFAULT_REST = "https://lumen-api.node9x.com";
+const DEFAULT_REST = "https://api-lumen.winnode.xyz";
 
 /* Helper: Hex/Base64 Decoder */
 const ensureUint8Array = (input: string | Uint8Array | undefined): Uint8Array => {

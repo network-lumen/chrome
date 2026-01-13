@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Buffer } from 'buffer';
 import { KeyManager, type LumenWallet, type PqcKeyData } from '../modules/sdk/key-manager';
 import { SetPassword } from './onboarding/SetPassword';
 import { VaultManager } from '../modules/vault/vault';
@@ -6,6 +7,7 @@ import { ActionBar } from './dashboard/ActionBar';
 import { ReceiveModal } from './dashboard/ReceiveModal';
 import { LinkPQCBanner } from './dashboard/LinkPQCBanner';
 import { HistoryModal } from './history/HistoryModal';
+import { HistoryManager } from '../modules/history/history';
 
 interface WalletTabProps {
     onWalletReady: () => void;
@@ -23,8 +25,12 @@ const PqcShield = () => (
 );
 
 export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys, isAdding, onCancel, showLinkModal, onCloseLinkModal }) => {
-    /* Flows: 'init' -> 'generated' (backup) -> 'set-password' -> DONE */
-    const [view, setView] = useState<'init' | 'generated' | 'set-password'>('init');
+    /* Flows: 'init' -> 'generated' (backup) -> 'verify-mnemonic' -> 'set-password' -> DONE */
+    const [view, setView] = useState<'init' | 'generated' | 'verify-mnemonic' | 'set-password'>('init');
+
+    /* Verification State */
+    const [verifyIndices, setVerifyIndices] = useState<number[]>([]);
+    const [verifyGuesses, setVerifyGuesses] = useState<string[]>(['', '', '']);
 
     /* Form States */
     const [mnemonicInput, setMnemonicInput] = useState('');
@@ -32,7 +38,8 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
     const [importMode, setImportMode] = useState<'file' | 'code'>('file');
     const [pqcCodeInput, setPqcCodeInput] = useState('');
 
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = React.useState(false);
+    const lastBalanceRef = React.useRef<string>("0");
     const [error, setError] = useState<string | null>(null);
 
     /* Generation State */
@@ -62,19 +69,24 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
         const fetchBalance = async () => {
             try {
                 /* TODO: Move API config to a central place */
-                const API_URL = "https://lumen-api.node9x.com";
+                const API_URL = "https://api-lumen.winnode.xyz";
                 const res = await fetch(`${API_URL}/cosmos/bank/v1beta1/balances/${activeKeys.address}`);
 
                 if (!res.ok) throw new Error("Failed to fetch balance");
 
-                const data = await res.json();
-                /* Find 'ulmn' denom */
-                const ulmn = data.balances?.find((b: any) => b.denom === 'ulmn');
-                if (ulmn) {
-                    const amount = parseFloat(ulmn.amount) / 1_000_000;
-                    setBalance(amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 }));
-                } else {
-                    setBalance('0.00');
+                if (res.ok) {
+                    const data = await res.json();
+                    const newBalRaw = data.balances.find((b: any) => b.denom === 'ulmn')?.amount || '0';
+                    const newBalFormatted = (parseFloat(newBalRaw) / 1_000_000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+                    setBalance(newBalFormatted);
+
+                    // Check for increase -> Force Scan
+                    const oldBalVal = parseFloat(lastBalanceRef.current);
+                    const newBalVal = parseFloat(newBalRaw);
+                    if (newBalVal > oldBalVal && oldBalVal > 0) {
+                        HistoryManager.onBalanceIncrease(activeKeys.address);
+                    }
+                    lastBalanceRef.current = newBalRaw;
                 }
             } catch (e) {
                 console.error("Balance fetch error:", e);
@@ -87,6 +99,19 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
         /* Poll every 10 seconds */
         const interval = setInterval(fetchBalance, 10000);
         return () => clearInterval(interval);
+    }, [activeKeys]);
+
+    /* Active Block Scanner Polling (Every 6s) */
+    React.useEffect(() => {
+        if (!activeKeys?.address) return;
+
+        // Run once on mount/change
+        const sync = () => {
+            HistoryManager.syncGap(activeKeys.address); // Fast Sync for Offline Gap
+            HistoryManager.syncBlocks(activeKeys.address);
+        };
+        sync();
+
     }, [activeKeys]);
 
     const downloadFile = (data: string, filename: string) => {
@@ -276,8 +301,37 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
             return;
         }
 
+        if (!tempWallet) return;
+        // Start Verification
+        const words = tempWallet.mnemonic.split(' ');
+        const indices: number[] = [];
+        while (indices.length < 3) {
+            const r = Math.floor(Math.random() * words.length);
+            if (!indices.includes(r)) indices.push(r);
+        }
+        indices.sort((a, b) => a - b);
+
+        setVerifyIndices(indices);
+        setVerifyGuesses(['', '', '']);
+        setView('verify-mnemonic');
+    };
+
+    const handleVerifyKeys = () => {
+        if (!tempWallet) return;
+        const words = tempWallet.mnemonic.split(' ');
+
+        // Check guesses
+        for (let i = 0; i < 3; i++) {
+            const idx = verifyIndices[i];
+            if (verifyGuesses[i].trim().toLowerCase() !== words[idx].toLowerCase()) {
+                setError(`Word #${idx + 1} is incorrect.`);
+                return;
+            }
+        }
+
+        setError(null);
+
         if (isAdding) {
-            // Skip password set, auto-add
             handleAddToVault();
         } else {
             setView('set-password');
@@ -386,14 +440,22 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
 
                 <div className="space-y-2">
                     <label className="text-xs font-medium text-[var(--text-muted)]">1. Mnemonic Phrase (Secret)</label>
-                    <div className="bg-surface border border-border rounded-xl p-3">
-                        <p className="font-mono text-sm text-foreground break-words">{tempWallet.mnemonic}</p>
+                    <div className="bg-surfaceHighlight/5 border border-border rounded-xl p-4">
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                            {tempWallet.mnemonic.split(' ').map((word, i) => (
+                                <div key={i} className="bg-surface border border-white/5 hover:border-primary/30 transition-colors rounded-lg px-3 py-2 flex gap-3 items-center group relative overflow-hidden">
+                                    <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                    <span className="text-[10px] text-[var(--text-dim)] font-mono select-none w-5 text-right relative z-10">{i + 1}.</span>
+                                    <span className="text-sm font-bold text-foreground tracking-wide relative z-10">{word}</span>
+                                </div>
+                            ))}
+                        </div>
                         <button
                             onClick={() => navigator.clipboard.writeText(tempWallet.mnemonic)}
-                            className="mt-2 text-[10px] text-primary hover:text-foreground flex items-center gap-1"
+                            className="w-full py-3 bg-surface border border-border hover:bg-surfaceHighlight rounded-xl text-xs font-bold text-primary transition-all flex items-center justify-center gap-2 group"
                         >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                            Copy Phrase
+                            <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                            Copy Mnemonic Phrase
                         </button>
                     </div>
                 </div>
@@ -408,7 +470,18 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                             <p className="text-[10px] text-[var(--text-dim)] font-mono">Dilithium3</p>
                         </div>
                         <button
-                            onClick={() => downloadFile(JSON.stringify({ pqcKey: tempWallet.pqcKey || (tempWallet as any).pqc }, null, 2), `lumen-pqc-${tempWallet.address.slice(0, 8)}.json`)}
+                            onClick={() => {
+                                const keyData = tempWallet.pqcKey || (tempWallet as any).pqc;
+                                const exportData = {
+                                    pqcKey: {
+                                        ...keyData,
+                                        /* Convert Hex -> Base64 for consistent export format */
+                                        publicKey: Buffer.from(keyData.publicKey, 'hex').toString('base64'),
+                                        privateKey: Buffer.from(keyData.privateKey, 'hex').toString('base64')
+                                    }
+                                };
+                                downloadFile(JSON.stringify(exportData, null, 2), `lumen-pqc-${tempWallet.address.slice(0, 8)}.json`);
+                            }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${hasDownloaded ? 'bg-green-500/20 text-green-500' : 'bg-primary text-white hover:bg-primary/90'}`}
                         >
                             {hasDownloaded ? 'Downloaded' : 'Download JSON'}
@@ -428,7 +501,64 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
         );
     }
 
-    /* 3. Password Setup logic */
+    /* 3. Verify Mnemonic Logic */
+    if (view === 'verify-mnemonic' && tempWallet) {
+        return (
+            <div className="flex flex-col h-full p-4 animate-fade-in space-y-6">
+                <div className="text-center space-y-2">
+                    <div className="w-12 h-12 bg-primary/20 rounded-full mx-auto flex items-center justify-center text-primary">
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    </div>
+                    <h2 className="text-xl font-bold text-foreground">Verify Mnemonic</h2>
+                    <p className="text-xs text-[var(--text-muted)]">Enter the following words from your phrase to confirm you saved them.</p>
+                </div>
+
+                <div className="space-y-4">
+                    {verifyIndices.map((idx, i) => (
+                        <div key={idx} className="space-y-1.5">
+                            <label className="text-xs font-bold text-[var(--text-muted)] ml-1">Word #{idx + 1}</label>
+                            <input
+                                type="text"
+                                value={verifyGuesses[i]}
+                                onChange={(e) => {
+                                    const newGuesses = [...verifyGuesses];
+                                    newGuesses[i] = e.target.value;
+                                    setVerifyGuesses(newGuesses);
+                                    setError(null);
+                                }}
+                                placeholder={`Enter word #${idx + 1}`}
+                                className="w-full bg-surface border border-border rounded-xl p-3 text-foreground text-sm font-bold focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:font-normal"
+                            />
+                        </div>
+                    ))}
+                </div>
+
+                {error && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-center">
+                        <p className="text-red-500 text-xs font-medium">{error}</p>
+                    </div>
+                )}
+
+                <div className="flex-1"></div>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => setView('generated')}
+                        className="flex-1 py-3 rounded-xl font-bold text-foreground bg-surfaceHighlight hover:bg-border transition-colors text-sm"
+                    >
+                        Back
+                    </button>
+                    <button
+                        onClick={handleVerifyKeys}
+                        disabled={verifyGuesses.some(g => !g.trim())}
+                        className="flex-1 py-3 rounded-xl font-bold text-white bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm shadow-lg shadow-primary/20"
+                    >
+                        Verify & Continue
+                    </button>
+                </div>
+            </div>
+        );
+    }
     if (view === 'set-password') {
         return <SetPassword onConfirm={handleSetPassword} />;
     }
