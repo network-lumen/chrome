@@ -187,7 +187,7 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
 
                     /* Verify Transaction */
                     try {
-                        const API_BASE = "https://lumen-api.node9x.com";
+                        const API_BASE = "https://api-lumen.winnode.xyz";
                         /* Wait a simplified 2s for propagation before checking */
                         await new Promise(r => setTimeout(r, 2000));
 

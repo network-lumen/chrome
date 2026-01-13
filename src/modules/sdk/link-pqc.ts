@@ -8,7 +8,7 @@ import { Any } from 'cosmjs-types/google/protobuf/any';
 import type { LumenWallet } from '../../types/wallet';
 
 const CHAIN_ID = "lumen";
-const DEFAULT_REST = "https://lumen-api.node9x.com";
+const DEFAULT_REST = "https://api-lumen.winnode.xyz";
 
 /**
  * Helper: Hex/Base64 Decoder

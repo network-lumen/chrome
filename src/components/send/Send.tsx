@@ -3,6 +3,7 @@ import { useSendTransaction } from '../../hooks/useSendTransaction';
 import type { LumenWallet } from '../../modules/sdk/key-manager';
 import { BookUser } from 'lucide-react';
 import { ContactsModal } from '../contacts/ContactsModal';
+import { HistoryManager } from '../../modules/history/history';
 
 interface SendProps {
     activeKeys: LumenWallet;
@@ -28,7 +29,7 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
         const fetchBalance = async () => {
             try {
                 setIsBalanceLoading(true);
-                const API_URL = "https://lumen-api.node9x.com";
+                const API_URL = "https://api-lumen.winnode.xyz";
                 const res = await fetch(`${API_URL}/cosmos/bank/v1beta1/balances/${activeKeys.address}`);
                 if (!res.ok) throw new Error("Failed to fetch balance");
                 const data = await res.json();
@@ -79,6 +80,18 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
     };
 
     if (successHash) {
+        // Save to local history immediately
+        HistoryManager.saveTransaction(activeKeys.address, {
+            hash: successHash,
+            height: '0', // Pending/Unknown
+            timestamp: new Date().toISOString(),
+            type: 'send',
+            amount: amount,
+            denom: 'LMN',
+            counterparty: recipient,
+            status: 'success'
+        });
+
         return (
             <div className="flex flex-col h-full animate-fade-in p-6 items-center justify-center text-center space-y-6">
                 <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center text-green-500 mb-2">

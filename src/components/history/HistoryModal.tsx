@@ -1,113 +1,26 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowUpRight, ArrowDownLeft, X, ExternalLink, Clock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { HistoryManager, type Transaction } from '../../modules/history/history';
+import { Clock, X, ArrowUpRight, ArrowDownLeft, ExternalLink } from 'lucide-react';
 
 interface HistoryModalProps {
     address: string;
     onClose: () => void;
 }
 
-interface Transaction {
-    hash: string;
-    height: string;
-    timestamp: string;
-    type: 'send' | 'receive';
-    amount: string;
-    denom: string;
-    counterparty: string;
-    status: 'success' | 'failed';
-}
-
 export const HistoryModal: React.FC<HistoryModalProps> = ({ address, onClose }) => {
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    // 1. Load initial cache
+    const [transactions, setTransactions] = useState<Transaction[]>(() => HistoryManager.getHistory(address));
     const [filter, setFilter] = useState<'all' | 'sent' | 'received'>('all');
 
     useEffect(() => {
-        const fetchHistory = async () => {
-            try {
-                setLoading(true);
-                const API_BASE = "http://142.132.201.187:1317";
+        setTransactions(HistoryManager.getHistory(address));
 
-                /* Fetch Sent */
-                /* Note: Removing order_by as it can cause 500s on some nodes. Pagination default is usually latest first or random. */
-                const sentRes = await fetch(`${API_BASE}/cosmos/tx/v1beta1/txs?events=message.sender='${address}'&pagination.limit=20`);
-                const sentData = await sentRes.json();
+        // Poll for updates (e.g. from BalanceWatcher)
+        const interval = setInterval(() => {
+            setTransactions(HistoryManager.getHistory(address));
+        }, 2000);
 
-                /* Fetch Received */
-                const receivedRes = await fetch(`${API_BASE}/cosmos/tx/v1beta1/txs?events=transfer.recipient='${address}'&pagination.limit=20`);
-                const receivedData = await receivedRes.json();
-
-                const parsed: Transaction[] = [];
-
-                /* Helper to parse amount string "1000ulmn" */
-                const parseAmount = (coins: any[]) => {
-                    if (!coins || coins.length === 0) return { amount: '0', denom: '' };
-                    const coin = coins[0]; /* Take first coin */
-                    /* Convert ulmn to LMN */
-                    if (coin.denom === 'ulmn') {
-                        return {
-                            amount: (parseFloat(coin.amount) / 1_000_000).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 6 }),
-                            denom: 'LMN'
-                        };
-                    }
-                    return { amount: coin.amount, denom: coin.denom };
-                };
-
-                /* Process Sent */
-                if (sentData.tx_responses) {
-                    sentData.tx_responses.forEach((tx: any) => {
-                        /* Find the message that matters (Bank Send) */
-                        const msg = tx.tx.body.messages.find((m: any) => m['@type'] === '/cosmos.bank.v1beta1.MsgSend');
-                        if (msg) {
-                            const { amount, denom } = parseAmount(msg.amount);
-                            parsed.push({
-                                hash: tx.txhash,
-                                height: tx.height,
-                                timestamp: tx.timestamp,
-                                type: 'send',
-                                amount,
-                                denom,
-                                counterparty: msg.to_address,
-                                status: tx.code === 0 ? 'success' : 'failed'
-                            });
-                        }
-                    });
-                }
-
-                /* Process Received */
-                if (receivedData.tx_responses) {
-                    receivedData.tx_responses.forEach((tx: any) => {
-                        const msg = tx.tx.body.messages.find((m: any) => m['@type'] === '/cosmos.bank.v1beta1.MsgSend' && m.to_address === address);
-                        if (msg) {
-                            const { amount, denom } = parseAmount(msg.amount);
-                            parsed.push({
-                                hash: tx.txhash,
-                                height: tx.height,
-                                timestamp: tx.timestamp,
-                                type: 'receive',
-                                amount,
-                                denom,
-                                counterparty: msg.from_address,
-                                status: tx.code === 0 ? 'success' : 'failed'
-                            });
-                        }
-                    });
-                }
-
-                /* Sort by height desc (newest first) -> simple string compare works for same-length-ish heights, but better parse int */
-                parsed.sort((a, b) => parseInt(b.height) - parseInt(a.height));
-
-                setTransactions(parsed);
-            } catch (err: any) {
-                console.error("History fetch failed", err);
-                setError("Failed to load history");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchHistory();
+        return () => clearInterval(interval);
     }, [address]);
 
     const filtered = transactions.filter(t => filter === 'all' || (filter === 'sent' ? t.type === 'send' : t.type === 'receive'));
@@ -144,17 +57,7 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ address, onClose }) 
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                    {loading ? (
-                        <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--text-muted)]">
-                            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                            <p className="text-xs">Loading on-chain data...</p>
-                        </div>
-                    ) : error ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center gap-2">
-                            <p className="text-red-500 text-sm font-medium">{error}</p>
-                            <button onClick={() => window.location.reload()} className="text-xs text-primary hover:underline">Retry</button>
-                        </div>
-                    ) : filtered.length === 0 ? (
+                    {filtered.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] gap-2">
                             <div className="w-12 h-12 bg-surfaceHighlight rounded-full flex items-center justify-center">
                                 <Clock className="w-6 h-6 opacity-30" />
@@ -197,15 +100,31 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ address, onClose }) 
                                         <span className="opacity-50">{tx.type === 'send' ? 'To:' : 'From:'}</span>
                                         <span className="font-mono bg-surface/50 px-1 rounded">{tx.counterparty.slice(0, 8)}...{tx.counterparty.slice(-4)}</span>
                                     </div>
-                                    <a
-                                        href={`https://explorer.lumen.node9x.com/lumen/tx/${tx.hash}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-[10px] flex items-center gap-1 text-primary hover:text-primary-hover transition-colors"
-                                    >
-                                        <span>View</span>
-                                        <ExternalLink className="w-3 h-3" />
-                                    </a>
+                                    {tx.hash.startsWith('detected-') || tx.hash.startsWith('sys-') ? (
+                                        <a
+                                            href={`https://winscan.winsnip.xyz/lumen-mainnet/blocks/${tx.height}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-[10px] flex items-center gap-1 text-primary hover:underline"
+                                        >
+                                            <ExternalLink className="w-3 h-3" />
+                                            System Event #{tx.height}
+                                        </a>
+                                    ) : tx.hash.startsWith('offline-') ? (
+                                        <span className="text-[10px] flex items-center gap-1 text-[var(--text-muted)] cursor-help" title="Transaction not found in recent blocks">
+                                            <span>Unindexed</span>
+                                        </span>
+                                    ) : (
+                                        <a
+                                            href={`https://winscan.winsnip.xyz/lumen-mainnet/transactions/${tx.hash}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[10px] flex items-center gap-1 text-primary hover:text-primary-hover transition-colors"
+                                        >
+                                            <span>View</span>
+                                            <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                    )}
                                 </div>
                             </div>
                         ))
