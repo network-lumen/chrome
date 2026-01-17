@@ -39,7 +39,7 @@ export const useSendTransaction = () => {
             // Using BigInt/string math to avoid float precision issues is better, but for MVP float * 1m is ok
             // strictly speaking, we should use a library like 'decimal.js' or careful string parsing.
             // For now: 
-            const amountUlmn = Math.floor(amount * 1_000_000).toString();
+            const amountUlmn = Math.round(amount * 1_000_000).toString();
 
             // 3. Build & Sign (Dual Sign)
             // Updated signature matches new tx.ts
