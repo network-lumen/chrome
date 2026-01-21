@@ -12,15 +12,14 @@
    CHROME EXTENSION POPUP LAYOUT FIXES
    ======================================== */
 
-/* Fixed popup dimensions - increased height for dropdown visibility */
+/* Responsive popup layout - allows full screen in tab while maintaining popup look */
 html, body {
-  width: 380px !important;
-  min-width: 380px !important;
-  height: 620px !important;
-  min-height: 620px !important;
-  max-height: 620px !important;
-  overflow: visible !important;
-  position: relative !important;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
 }
 
 #root {
@@ -36,7 +35,6 @@ html, body {
   display: flex !important;
   flex-direction: column !important;
   height: 100% !important;
-  max-height: 620px !important;
   overflow: visible !important;
   position: relative !important;
 }
@@ -66,10 +64,9 @@ footer {
   justify-content: space-around !important;
 }
 
-/* Add padding to main content to prevent footer overlap */
-#root > div,
-.bg-background.text-foreground {
-  padding-bottom: 60px !important;
+/* Main content area padding - removed global !important padding that caused onboarding clipping */
+#root > div {
+  padding-bottom: 0;
 }
 
 /* Main content area - scrollable */
@@ -158,7 +155,7 @@ main {
 header, .bg-surface\/50, .bg-surface\/80 {
   backdrop-filter: saturate(180%) blur(20px) !important;
   -webkit-backdrop-filter: saturate(180%) blur(20px) !important;
-  border: 1px solid var(--card-border) !important;
+  border: none !important;
 }
 
 /* Rounded corners iOS style */
@@ -211,8 +208,8 @@ input:focus, textarea:focus, select:focus {
   box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.08);
 }
 
-/* Card styles with glassmorphism */
-.p-6, .p-4, .p-3 {
+/* Card styles with glassmorphism - moved to specific class to avoid hijacking */
+.glass-card {
   background: var(--surface);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
@@ -242,8 +239,8 @@ input:focus, textarea:focus, select:focus {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* List items */
-.space-y-2 > *, .space-y-3 > *, .space-y-4 > * {
+/* List items - moved to specific class to avoid hijacking layout containers */
+.ios-list > * {
   background: var(--surface);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);

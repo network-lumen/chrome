@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, TrendingUp, Award, Users, ChevronRight, RefreshCw } from 'lucide-react';
 import type { LumenWallet } from '../../modules/sdk/key-manager';
 import { Toast } from '../common/Toast';
-import { 
-    fetchDelegations, 
-    fetchRewards, 
+import {
+    fetchDelegations,
+    fetchRewards,
     fetchValidators,
     fetchValidator,
     delegateTokens,
@@ -52,36 +52,36 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
     // Fetch user's delegations and rewards
     const fetchUserStakingData = async () => {
         if (!walletKeys?.address) return;
-        
+
         setFetching(true);
         try {
             // Fetch delegations
             const delegations = await fetchDelegations(walletKeys.address);
-            
+
             // Fetch rewards
             const rewardsData = await fetchRewards(walletKeys.address);
-            
+
             // Calculate total staked
             let totalStakedAmount = BigInt(0);
             const stakes: UserStake[] = [];
-            
+
             for (const delegation of delegations) {
                 const validatorAddr = delegation.delegation.validator_address;
                 const stakedAmount = delegation.balance.amount;
                 totalStakedAmount += BigInt(stakedAmount);
-                
+
                 // Fetch validator info
                 const validatorInfo = await fetchValidator(validatorAddr);
-                
+
                 // Find rewards for this validator
                 const validatorRewards = rewardsData.rewards.find(
                     (r: any) => r.validator_address === validatorAddr
                 );
                 const rewardAmount = validatorRewards?.reward?.find((r: any) => r.denom === 'ulmn')?.amount || '0';
-                
+
                 if (validatorInfo) {
                     const commissionRate = parseFloat(validatorInfo.commission.commission_rates.rate) * 100;
-                    
+
                     stakes.push({
                         validator: {
                             address: validatorAddr,
@@ -97,14 +97,14 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                     });
                 }
             }
-            
+
             setUserStakes(stakes);
             setTotalStaked((Number(totalStakedAmount) / 1000000).toFixed(2));
-            
+
             // Calculate total rewards
             const totalRewardsAmount = rewardsData.total.find((r: any) => r.denom === 'ulmn')?.amount || '0';
             setTotalRewards((parseFloat(totalRewardsAmount) / 1000000).toFixed(6));
-            
+
         } catch (error) {
             console.error('Error fetching staking data:', error);
             setToastMessage('Failed to fetch staking data');
@@ -119,10 +119,10 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
     const fetchValidatorsList = async () => {
         try {
             const validatorsData = await fetchValidators();
-            
+
             const formattedValidators: Validator[] = validatorsData.map((v: any) => {
                 const commissionRate = parseFloat(v.commission.commission_rates.rate) * 100;
-                
+
                 return {
                     address: v.operator_address,
                     moniker: v.description.moniker,
@@ -132,7 +132,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                     apr: '12.5%' // Calculate from chain params if available
                 };
             });
-            
+
             setValidators(formattedValidators);
         } catch (error) {
             console.error('Error fetching validators:', error);
@@ -147,17 +147,17 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
     const handleStake = async () => {
         if (!selectedValidator || !amount || !walletKeys) return;
         setLoading(true);
-        
+
         try {
             const amountUlmn = (parseFloat(amount) * 1000000).toString();
             const txHash = await delegateTokens(walletKeys, selectedValidator.address, amountUlmn);
-            
+
             setToastMessage(`Staked successfully! TX: ${txHash.slice(0, 8)}...`);
             setToastType('success');
             setShowToast(true);
             setAmount('');
             setSelectedValidator(null);
-            
+
             // Refresh data
             await fetchUserStakingData();
         } catch (error: any) {
@@ -173,15 +173,15 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
     const handleUnstake = async (stake: UserStake) => {
         if (!walletKeys) return;
         setLoading(true);
-        
+
         try {
             const amountUlmn = (parseFloat(stake.amount) * 1000000).toString();
             const txHash = await undelegateTokens(walletKeys, stake.validatorAddress, amountUlmn);
-            
+
             setToastMessage(`Unstaked successfully! TX: ${txHash.slice(0, 8)}...`);
             setToastType('success');
             setShowToast(true);
-            
+
             // Refresh data
             await fetchUserStakingData();
         } catch (error: any) {
@@ -197,14 +197,14 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
     const handleClaimRewards = async (validatorAddress: string) => {
         if (!walletKeys) return;
         setLoading(true);
-        
+
         try {
             const txHash = await claimRewards(walletKeys, validatorAddress);
-            
+
             setToastMessage(`Rewards claimed! TX: ${txHash.slice(0, 8)}...`);
             setToastType('success');
             setShowToast(true);
-            
+
             // Refresh data
             await fetchUserStakingData();
         } catch (error: any) {
@@ -220,84 +220,91 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
     return (
         <div className="flex flex-col h-full bg-background">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-4 border-b border-border bg-surface/80 backdrop-blur-xl">
+            <div className="flex items-center justify-between px-4 py-1.5 premium-header backdrop-blur-xl shrink-0">
                 <button
                     onClick={onBack}
-                    className="p-2 hover:bg-surfaceHighlight rounded-xl transition-all duration-300 hover:scale-110 active:scale-95"
+                    className="p-1.5 hover:bg-surfaceHighlight rounded-lg transition-all duration-300 hover:scale-110 active:scale-95"
                 >
-                    <ArrowLeft className="w-5 h-5 text-foreground" />
+                    <ArrowLeft className="w-4 h-4 text-foreground" />
                 </button>
-                <h1 className="text-lg font-bold text-foreground">Staking</h1>
+                <h1 className="text-base font-bold text-foreground tracking-tight">Staking</h1>
                 <button
                     onClick={fetchUserStakingData}
                     disabled={fetching}
-                    className="p-2 hover:bg-surfaceHighlight rounded-xl transition-all duration-300 hover:scale-110 active:scale-95 disabled:scale-100"
+                    className="p-1.5 hover:bg-surfaceHighlight rounded-lg transition-all duration-300 hover:scale-110 active:scale-95 disabled:scale-100"
                 >
-                    <RefreshCw className={`w-5 h-5 text-foreground transition-transform ${fetching ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-4 h-4 text-foreground transition-transform ${fetching ? 'animate-spin' : ''}`} />
                 </button>
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-3 gap-3 p-4">
-                <div className="bg-gradient-to-br from-surface to-surfaceHighlight border border-border rounded-2xl p-3 hover:scale-105 transition-all duration-300">
-                    <div className="flex items-center gap-2 mb-2">
-                        <TrendingUp className="w-4 h-4 text-primary" />
-                        <span className="text-[10px] text-[var(--text-muted)] uppercase font-semibold">APR</span>
+            <div className="grid grid-cols-3 gap-1.5 p-3 pb-2">
+                <div className="bg-surface border border-border rounded-lg p-2 hover:bg-surfaceHighlight transition-colors min-w-0">
+                    <div className="flex items-center gap-1 mb-1">
+                        <TrendingUp className="w-3 h-3 text-primary" />
+                        <span className="text-[8px] text-[var(--text-dim)] uppercase font-bold tracking-wider">APR</span>
                     </div>
-                    <p className="text-lg font-bold text-foreground">12.5%</p>
+                    <p className="text-sm font-bold text-foreground truncate">12.5%</p>
                 </div>
-                <div className="bg-gradient-to-br from-surface to-surfaceHighlight border border-border rounded-2xl p-3 hover:scale-105 transition-all duration-300">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Award className="w-4 h-4 text-lumen" />
-                        <span className="text-[10px] text-[var(--text-muted)] uppercase font-semibold">Staked</span>
+                <div className="bg-surface border border-border rounded-lg p-2 hover:bg-surfaceHighlight transition-colors min-w-0">
+                    <div className="flex items-center gap-1 mb-1">
+                        <Award className="w-3 h-3 text-lumen" />
+                        <span className="text-[8px] text-[var(--text-dim)] uppercase font-bold tracking-wider">Staked</span>
                     </div>
-                    <p className="text-lg font-bold text-foreground">{totalStaked} LMN</p>
+                    <div className="flex items-baseline gap-0.5 min-w-0 overflow-hidden">
+                        <p className={`font-bold text-foreground truncate ${totalStaked.length > 8 ? 'text-xs' : 'text-sm'}`}>
+                            {totalStaked}
+                        </p>
+                        <span className="text-[7px] font-bold text-[var(--text-dim)] shrink-0">LMN</span>
+                    </div>
                 </div>
-                <div className="bg-gradient-to-br from-surface to-surfaceHighlight border border-border rounded-2xl p-3 hover:scale-105 transition-all duration-300">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Users className="w-4 h-4 text-green-500" />
-                        <span className="text-[10px] text-[var(--text-muted)] uppercase font-semibold">Rewards</span>
+                <div className="bg-surface border border-border rounded-lg p-2 hover:bg-surfaceHighlight transition-colors min-w-0">
+                    <div className="flex items-center gap-1 mb-1">
+                        <Users className="w-3 h-3 text-green-500" />
+                        <span className="text-[8px] text-[var(--text-dim)] uppercase font-bold tracking-wider">Rewards</span>
                     </div>
-                    <p className="text-lg font-bold text-foreground">{totalRewards} LMN</p>
+                    <div className="flex items-baseline gap-0.5 min-w-0 overflow-hidden">
+                        <p className={`font-bold text-foreground truncate ${totalRewards.length > 8 ? 'text-xs' : 'text-sm'}`}>
+                            {totalRewards}
+                        </p>
+                        <span className="text-[7px] font-bold text-[var(--text-dim)] shrink-0">LMN</span>
+                    </div>
                 </div>
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-2 px-4 mb-4">
+            <div className="flex gap-2 px-4 mb-3">
                 <button
                     onClick={() => setActiveTab('stake')}
-                    className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all duration-300 ${
-                        activeTab === 'stake'
-                            ? 'bg-primary text-white scale-105'
-                            : 'bg-surface text-[var(--text-muted)] hover:bg-surfaceHighlight hover:scale-105'
-                    }`}
+                    className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs transition-all duration-300 ${activeTab === 'stake'
+                        ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-[1.02]'
+                        : 'bg-surface text-[var(--text-dim)] hover:bg-surfaceHighlight'
+                        }`}
                 >
                     Stake
                 </button>
                 <button
                     onClick={() => setActiveTab('unstake')}
-                    className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all duration-300 ${
-                        activeTab === 'unstake'
-                            ? 'bg-primary text-white scale-105'
-                            : 'bg-surface text-[var(--text-muted)] hover:bg-surfaceHighlight hover:scale-105'
-                    }`}
+                    className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs transition-all duration-300 ${activeTab === 'unstake'
+                        ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-[1.02]'
+                        : 'bg-surface text-[var(--text-dim)] hover:bg-surfaceHighlight'
+                        }`}
                 >
                     Unstake
                 </button>
                 <button
                     onClick={() => setActiveTab('rewards')}
-                    className={`flex-1 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all duration-300 ${
-                        activeTab === 'rewards'
-                            ? 'bg-primary text-white scale-105'
-                            : 'bg-surface text-[var(--text-muted)] hover:bg-surfaceHighlight hover:scale-105'
-                    }`}
+                    className={`flex-1 py-2 px-3 rounded-lg font-bold text-xs transition-all duration-300 ${activeTab === 'rewards'
+                        ? 'bg-primary text-white shadow-lg shadow-primary/20 scale-[1.02]'
+                        : 'bg-surface text-[var(--text-dim)] hover:bg-surfaceHighlight'
+                        }`}
                 >
                     Rewards
                 </button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto px-3 pb-3">
+            <div className="flex-1 overflow-y-auto px-3 pb-24">
                 {activeTab === 'stake' && (
                     <div className="space-y-3">
                         {hasStakes ? (
@@ -308,7 +315,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                                     {userStakes.map((stake, idx) => (
                                         <div
                                             key={idx}
-                                            className="bg-surface border border-border rounded-2xl p-4 hover:border-primary/50 transition-all duration-300 hover:scale-[1.02]"
+                                            className="bg-surface border border-border rounded-xl p-3 hover:border-primary/50 transition-all duration-300 hover:scale-[1.01]"
                                         >
                                             <div className="flex items-center justify-between mb-2">
                                                 <div className="flex items-center gap-2">
@@ -345,23 +352,25 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                             /* Show Validator List for New Staking */
                             <>
                                 {/* Amount Input */}
-                                <div className="bg-surface border border-border rounded-lg p-3">
-                                    <label className="text-[10px] font-medium text-[var(--text-muted)] mb-1.5 block uppercase">
-                                        Amount to Stake
-                                    </label>
+                                <div className="bg-surface border border-border rounded-lg p-2.5">
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <label className="text-[9px] font-bold text-[var(--text-dim)] uppercase tracking-wider">
+                                            Amount to Stake
+                                        </label>
+                                        <button className="text-[9px] text-primary font-bold uppercase tracking-wider">
+                                            Max
+                                        </button>
+                                    </div>
                                     <div className="flex items-center gap-2">
                                         <input
                                             type="number"
                                             value={amount}
                                             onChange={(e) => setAmount(e.target.value)}
                                             placeholder="0.00"
-                                            className="flex-1 bg-background border border-border rounded-lg p-2.5 text-foreground text-base font-semibold focus:border-primary outline-none transition-colors"
+                                            className="flex-1 bg-background border border-border rounded-md p-2 text-sm font-semibold focus:border-primary outline-none transition-colors"
                                         />
-                                        <span className="text-xs font-medium text-[var(--text-muted)]">LMN</span>
+                                        <span className="text-xs font-bold text-[var(--text-dim)]">LMN</span>
                                     </div>
-                                    <button className="mt-1.5 text-[10px] text-primary font-semibold">
-                                        Max
-                                    </button>
                                 </div>
 
                                 {/* Validators List */}
@@ -372,11 +381,10 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                                             <button
                                                 key={validator.address}
                                                 onClick={() => setSelectedValidator(validator)}
-                                                className={`w-full bg-surface border rounded-lg p-3 transition-colors text-left ${
-                                                    selectedValidator?.address === validator.address
-                                                        ? 'border-primary bg-primary/5'
-                                                        : 'border-border hover:border-primary/50'
-                                                }`}
+                                                className={`w-full bg-surface border rounded-lg p-3 transition-colors text-left ${selectedValidator?.address === validator.address
+                                                    ? 'border-primary bg-primary/5'
+                                                    : 'border-border hover:border-primary/50'
+                                                    }`}
                                             >
                                                 <div className="flex items-center justify-between mb-2">
                                                     <div className="flex items-center gap-2">
@@ -415,7 +423,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                                 <button
                                     onClick={handleStake}
                                     disabled={!selectedValidator || !amount || loading}
-                                    className="w-full bg-gradient-to-r from-primary to-primary-light hover:from-primary-hover hover:to-primary disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl transition-all duration-300 hover:scale-105 active:scale-95"
+                                    className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition-all duration-300 shadow-lg shadow-primary/20 active:scale-95"
                                 >
                                     {loading ? 'Staking...' : 'Stake Now'}
                                 </button>
@@ -445,7 +453,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                                             </div>
                                         </div>
                                     </div>
-                                    <button 
+                                    <button
                                         onClick={() => handleUnstake(stake)}
                                         disabled={loading}
                                         className="w-full bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2 rounded-lg transition-colors"
@@ -483,7 +491,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                                             </div>
                                         </div>
                                     </div>
-                                    <button 
+                                    <button
                                         onClick={() => handleClaimRewards(stake.validatorAddress)}
                                         disabled={loading || parseFloat(stake.rewards) === 0}
                                         className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2 rounded-lg transition-colors"

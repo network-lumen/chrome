@@ -51,13 +51,13 @@
 
 [data-theme='light'] {
   color-scheme: light;
-  --bg: #ffffff;
-  --surface: #f9fafb; /* gray-50 */
-  --surface-highlight: #e5e7eb; /* gray-200 */
-  --border: #e5e7eb;
-  --foreground: #111827; /* gray-900 */
-  --text-muted: #4b5563; /* gray-600 */
-  --text-dim: #9ca3af; /* gray-400 */
+  --bg: #f8fafc; /* slate-50 - very clean airy background */
+  --surface: #ffffff; /* pure white for cards to float on */
+  --surface-highlight: #f1f5f9; /* slate-100 */
+  --border: #e2e8f0; /* slate-200 */
+  --foreground: #020617; /* slate-950 */
+  --text-muted: #475569; /* slate-600 */
+  --text-dim: #64748b; /* slate-500 */
 }
 
 html, body {
@@ -140,4 +140,106 @@ button:not(:disabled):active {
 /* Pulse slow animation */
 .animate-pulse-slow {
   animation: pulseSlow 3s ease-in-out infinite;
+}
+
+/* Premium UI Utilities */
+.premium-card {
+  position: relative;
+  background: var(--surface);
+  border: none;
+  overflow: hidden;
+  transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); /* Bouncy premium feel */
+  box-shadow: 0 10px 50px -12px rgba(0, 0, 0, 0.1), 0 4px 12px -4px rgba(0, 0, 0, 0.05);
+}
+
+.premium-card:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.15), 0 18px 36px -18px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] .premium-card {
+  box-shadow: 0 10px 50px -12px rgba(0, 0, 0, 0.5), 0 4px 12px -4px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme='dark'] .premium-card:hover {
+  box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.6), 0 18px 36px -18px rgba(0, 0, 0, 0.4);
+}
+
+.premium-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+              radial-gradient(circle at 100% 100%, rgba(0, 209, 255, 0.1) 0%, transparent 50%);
+  opacity: 0.6;
+  transition: opacity 0.5s ease;
+}
+
+[data-theme='light'] .premium-card::before {
+  background: radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.04) 0%, transparent 70%),
+              radial-gradient(circle at 100% 100%, rgba(0, 209, 255, 0.03) 0%, transparent 70%);
+}
+
+.premium-card:hover::before {
+  opacity: 1;
+}
+
+.premium-header {
+  position: relative;
+  background: transparent; /* Seamless blend */
+  overflow: visible; /* Allow menu overflow */
+}
+
+/* Removed ::after border line */
+
+.premium-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 10% 0%, rgba(99, 102, 241, 0.1) 0%, transparent 40%),
+              radial-gradient(circle at 90% 100%, rgba(0, 209, 255, 0.05) 0%, transparent 40%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+[data-theme='light'] .premium-header::before {
+  background: radial-gradient(circle at 10% 0%, rgba(99, 102, 241, 0.03) 0%, transparent 50%),
+              radial-gradient(circle at 90% 100%, rgba(0, 209, 255, 0.02) 0%, transparent 50%);
+}
+
+.mesh-gradient {
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+    radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+    radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+}
+
+[data-theme='light'] .mesh-gradient {
+  background-image: 
+    radial-gradient(at 0% 0%, hsla(210, 40%, 98%, 1) 0, transparent 50%), 
+    radial-gradient(at 50% 0%, hsla(210, 40%, 94%, 1) 0, transparent 50%), 
+    radial-gradient(at 100% 0%, hsla(210, 40%, 96%, 1) 0, transparent 50%);
+}
+
+.glass-squircle {
+  @apply relative overflow-hidden transition-all duration-300;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='light'] .glass-squircle {
+  background: rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(15, 23, 42, 0.05);
+}
+
+.glass-squircle:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='light'] .glass-squircle:hover {
+  background: rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.1);
 }

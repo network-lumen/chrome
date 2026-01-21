@@ -22,13 +22,7 @@ interface WalletTabProps {
     onCloseLinkModal?: () => void;
 }
 
-const PqcShield = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-lumen" viewBox="0 0 24 24" fill="currentColor">
-        <path fillRule="evenodd" d="M12.516 2.17a.75.75 0 00-1.032 0 11.209 11.209 0 01-7.877 3.08.75.75 0 00-.722.515A12.74 12.74 0 002.25 9.375c0 4.342 2.175 7.63 5.352 9.687A13.882 13.882 0 0012 21.75a13.882 13.882 0 004.398-2.688c3.177-2.057 5.352-5.345 5.352-9.687a12.74 12.74 0 00-.635-3.61.75.75 0 00-.722-.516l-.143.001c-2.996 0-5.717-1.17-7.734-3.08zm3.094 8.016a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
-    </svg>
-);
-
-export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys, isAdding, showLinkModal, onCloseLinkModal }) => {
+export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys, isAdding, onCancel, showLinkModal, onCloseLinkModal }) => {
     /* Flows: 'welcome' -> 'create-method' -> 'mnemonic-display' -> 'mnemonic-verify' -> 'set-password' -> DONE */
     /* Or: 'welcome' -> 'import' -> 'set-password' -> DONE */
     const [view, setView] = useState<'welcome' | 'create-method' | 'mnemonic-display' | 'mnemonic-verify' | 'import' | 'set-password'>(isAdding ? 'create-method' : 'welcome');
@@ -203,56 +197,65 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
 
                 {/* REMOVED INLINE BANNER - Now using Modal */}
 
-                <div className="relative overflow-hidden">
-                    {/* Clean Modern Balance Card */}
-                    <div className="relative bg-gradient-to-br from-surface to-surfaceHighlight border border-border rounded-2xl p-6 overflow-hidden">
+                <div className="relative mt-2 px-1">
+                    {/* Premium Balance Card */}
+                    <div className="premium-card rounded-3xl p-6 transition-all duration-700 group/balance">
+                        {/* Mesh Gradient Overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-lumen/5 opacity-50 group-hover/balance:opacity-100 transition-opacity duration-700" />
+
                         <div className="relative z-10">
                             {/* Header Row */}
-                            <div className="flex items-center justify-between mb-6">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm font-medium text-foreground/70">Total Balance</span>
+                            <div className="flex items-center justify-between mb-8">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
+                                    <span className="text-[10px] font-bold text-foreground/40 tracking-[0.2em] uppercase">Total Balance</span>
                                     <button
                                         onClick={toggleBalance}
-                                        className="p-1.5 text-foreground/50 hover:text-foreground transition-colors rounded-lg hover:bg-surfaceHighlight"
+                                        className="p-1.5 text-foreground/20 hover:text-foreground transition-all rounded-lg hover:bg-foreground/5"
                                     >
                                         {hideBalance ? (
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                                         ) : (
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
                                         )}
                                     </button>
                                 </div>
-                                <div className="flex items-center gap-1.5 bg-lumen/10 px-2.5 py-1 rounded-full border border-lumen/20">
-                                    <PqcShield />
-                                    <span className="text-[10px] font-bold text-lumen uppercase tracking-wide">Secured</span>
+                                <div className="flex items-center gap-1.5 bg-green-500/10 px-2.5 py-1 rounded-full border border-green-500/20 backdrop-blur-md">
+                                    <div className="w-1 h-1 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,1)] animate-pulse" />
+                                    <span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Secured</span>
                                 </div>
                             </div>
-                            
+
                             {/* Balance Display */}
-                            <div className="mb-6">
-                                <div className="flex items-baseline gap-2 mb-1">
-                                    <span className="text-4xl font-bold text-foreground tracking-tight">
-                                        {hideBalance ? '••••••' : balance}
+                            <div className="mb-8">
+                                <div className="flex items-baseline gap-2.5 mb-1.5">
+                                    <span className="text-5xl font-black text-foreground tracking-tight leading-none">
+                                        {hideBalance ? '••••••' : balance.split('.')[0]}
                                     </span>
-                                    <span className="text-lg font-medium text-foreground/50">LMN</span>
+                                    {!hideBalance && (
+                                        <span className="text-3xl font-bold text-foreground/40 tabular-nums">.{balance.split('.')[1] || '00'}</span>
+                                    )}
+                                    <span className="text-base font-black text-primary/50 tracking-tighter ml-1">LMN</span>
                                 </div>
-                                <div className="text-sm text-foreground/40">≈ $0.00 USD</div>
+                                <div className="flex items-center gap-2">
+                                    <div className="h-[1px] w-8 bg-foreground/10" />
+                                    <span className="text-[11px] font-bold text-foreground/30 font-mono tracking-tight">≈ $0.00 USD</span>
+                                </div>
                             </div>
-                            
-                            {/* Address Section */}
-                            <div className="bg-background rounded-xl p-3 border border-border">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-[10px] text-foreground/40 mb-1 uppercase tracking-wider font-medium">Address</div>
-                                        <div className="font-mono text-xs text-foreground/70 truncate">{activeKeys.address}</div>
+
+                            {/* Address Box */}
+                            <div className="relative group/address">
+                                <div className="absolute inset-0 bg-foreground/5 rounded-xl blur-xl opacity-0 group-hover/address:opacity-100 transition-opacity" />
+                                <div className="relative bg-foreground/5 rounded-xl p-3.5 flex items-center justify-between hover:bg-foreground/10 transition-colors">
+                                    <div className="flex-1 min-w-0 pr-4">
+                                        <div className="text-[8px] font-black text-foreground/30 mb-1 uppercase tracking-[0.2em]">Address</div>
+                                        <div className="font-mono text-[10px] text-foreground/60 break-all leading-relaxed tracking-tight">{activeKeys.address}</div>
                                     </div>
-                                    <button 
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(activeKeys.address);
-                                        }}
-                                        className="ml-2 p-2 hover:bg-surfaceHighlight rounded-lg transition-colors"
+                                    <button
+                                        onClick={() => navigator.clipboard.writeText(activeKeys.address)}
+                                        className="p-2.5 bg-surface rounded-lg text-foreground/40 hover:text-primary hover:shadow-lg transition-all active:scale-90 border border-border/50"
                                     >
-                                        <svg className="w-4 h-4 text-foreground/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                         </svg>
                                     </button>
@@ -291,6 +294,7 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
             <Welcome
                 onCreateNew={() => setView('create-method')}
                 onImportExisting={() => setView('import')}
+                onBack={onCancel}
             />
         );
     }

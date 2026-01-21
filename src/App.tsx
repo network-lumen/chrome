@@ -64,12 +64,38 @@ function App() {
     const checkSession = async () => {
       const hasWallet = await VaultManager.hasWallet();
       if (hasWallet) {
-        setIsLocked(true);
-        navigate('/');
+        // Check if we already have an active session
+        try {
+          const unlockedWallets = await VaultManager.getWallets();
+          if (unlockedWallets && unlockedWallets.length > 0) {
+            setWallets(unlockedWallets);
+            setIsLocked(false);
+
+            // Restore active wallet
+            const lastActive = localStorage.getItem('lastActiveWalletAddress');
+            const foundIdx = unlockedWallets.findIndex(w => w.address === lastActive);
+            if (foundIdx !== -1) {
+              setActiveWalletIndex(foundIdx);
+            }
+
+            if (location.pathname === '/' || location.pathname === '/onboarding') {
+              navigate('/dashboard');
+            }
+          } else {
+            setIsLocked(true);
+            if (location.pathname === '/onboarding') {
+              navigate('/');
+            }
+          }
+        } catch {
+          setIsLocked(true);
+          if (location.pathname === '/onboarding') {
+            navigate('/');
+          }
+        }
       } else {
         // No wallet -> Onboarding.
         setIsLocked(false);
-        // If in popup mode (small width) and no wallet, open full tab for better onboarding experience
         if (window.innerWidth < 400 && (location.pathname === '/onboarding' || location.pathname === '/')) {
           openExpandedView('/wallet/create');
           window.close();
@@ -193,16 +219,40 @@ function App() {
     return <div className="h-full flex items-center justify-center bg-background text-primary">Loading...</div>;
   }
 
+  const isLandingPage = (location.pathname.includes('/wallet/create') || location.pathname === '/onboarding') && wallets.length === 0;
+
+  if (isLandingPage) {
+    return (
+      <div className="bg-background text-foreground font-sans w-screen h-screen overflow-y-auto" onClick={handleInteraction}>
+        <main className="w-full min-h-full flex flex-col">
+          <Routes>
+            <Route path="/wallet/create" element={
+              <WalletTab
+                onWalletReady={handleWalletReady}
+                activeKeys={null}
+                isAdding={wallets.length > 0}
+                onCancel={() => navigate('/dashboard')}
+                showLinkModal={false}
+                onCloseLinkModal={() => { }}
+              />
+            } />
+            <Route path="*" element={<Navigate to="/wallet/create" />} />
+          </Routes>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`bg-background text-foreground font-sans overflow-hidden flex flex-col h-full w-full max-w-md mx-auto`}
+      className="bg-background text-foreground font-sans overflow-hidden flex flex-col h-full w-full max-w-md mx-auto"
       onClick={handleInteraction}
       onKeyDown={handleInteraction}
       onMouseMove={handleInteraction}
     >
       {/* Header */}
       {!isLocked && activeWallet && (
-        <header className="h-16 border-b border-border flex items-center px-5 justify-between bg-surface/80 backdrop-blur-xl z-10 shrink-0 relative">
+        <header className="h-16 premium-header flex items-center px-5 justify-between backdrop-blur-xl z-10 shrink-0">
           <div className="flex items-center gap-2.5">
             <img src="/icons/logo.png" alt="Lumen" className="w-8 h-8 object-contain drop-shadow-[0_0_12px_rgba(99,102,241,0.4)] animate-pulse-slow" />
             <span className="font-bold text-foreground text-lg tracking-tight">Lumen</span>
@@ -266,15 +316,17 @@ function App() {
             ) : <Navigate to="/" />
           } />
           <Route path="/wallet/create" element={
-            <WalletTab
-              onWalletReady={handleWalletReady}
-              activeKeys={null}
-              isAdding={wallets.length > 0}
-              onCancel={() => navigate('/dashboard')}
-              /* No modal for create flow */
-              showLinkModal={false}
-              onCloseLinkModal={() => { }}
-            />
+            <div className="h-full">
+              <WalletTab
+                onWalletReady={handleWalletReady}
+                activeKeys={null}
+                isAdding={wallets.length > 0}
+                onCancel={() => navigate('/dashboard')}
+                /* No modal for create flow */
+                showLinkModal={false}
+                onCloseLinkModal={() => { }}
+              />
+            </div>
           } />
           <Route path="/swap" element={
             activeWallet ? <Swap walletKeys={activeWallet} /> : <Navigate to="/" />
