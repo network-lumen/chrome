@@ -115,7 +115,7 @@ export const Swap: React.FC<SwapProps> = ({ walletKeys }) => {
             </div>
 
             <div className="flex justify-center -my-3 relative z-10">
-                <div className="bg-background border border-border p-2 rounded-full shadow-lg">
+                <div className="bg-background border border-border p-2 rounded-full">
                     <RefreshCw className="w-4 h-4 text-[var(--text-muted)]" />
                 </div>
             </div>
@@ -138,7 +138,7 @@ export const Swap: React.FC<SwapProps> = ({ walletKeys }) => {
             <button
                 onClick={handleGetQuote}
                 disabled={!amount || isLoading}
-                className="w-full bg-primary hover:bg-primary-hover text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-primary/20 disabled:opacity-50 mt-4"
+                className="w-full bg-primary hover:bg-primary-hover text-white font-bold py-3.5 rounded-xl transition-all disabled:opacity-50 mt-4"
             >
                 {isLoading ? 'Getting Quote...' : 'Review Swap'}
             </button>
@@ -183,7 +183,7 @@ export const Swap: React.FC<SwapProps> = ({ walletKeys }) => {
             <button
                 onClick={handleExecute}
                 disabled={isLoading}
-                className="w-full bg-primary hover:bg-primary-hover text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+                className="w-full bg-primary hover:bg-primary-hover text-white font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2"
             >
                 {isLoading ? (
                     <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full" />
