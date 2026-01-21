@@ -7,7 +7,6 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Read version from manifest.json
 const manifestPath = resolve(__dirname, '../manifest.json');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 const version = manifest.version;
@@ -18,13 +17,11 @@ const distPath = resolve(__dirname, '../dist');
 console.log('\x1b[36m%s\x1b[0m', 'Creating zip file...');
 console.log('\x1b[32m%s\x1b[0m', `Version: ${version}`);
 
-// Create a file to stream archive data to
 const output = createWriteStream(outputPath);
 const archive = archiver('zip', {
-  zlib: { level: 9 } // Maximum compression
+  zlib: { level: 9 } 
 });
 
-// Listen for all archive data to be written
 output.on('close', function() {
   console.log('\x1b[32m%s\x1b[0m', '\n✓ Zip file created successfully!');
   console.log('\x1b[32m%s\x1b[0m', `✓ File: chrome-extension.${version}.zip`);
@@ -32,7 +29,6 @@ output.on('close', function() {
   console.log('\x1b[36m%s\x1b[0m', '\nYou can now upload this file to Chrome Web Store.');
 });
 
-// Handle warnings
 archive.on('warning', function(err) {
   if (err.code === 'ENOENT') {
     console.warn(err);
@@ -41,16 +37,12 @@ archive.on('warning', function(err) {
   }
 });
 
-// Handle errors
 archive.on('error', function(err) {
   throw err;
 });
 
-// Pipe archive data to the file
 archive.pipe(output);
 
-// Append files from dist directory
 archive.directory(distPath, false);
 
-// Finalize the archive
 archive.finalize();
