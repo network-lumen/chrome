@@ -209,7 +209,7 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                     <button
                         type="submit"
                         disabled={!recipient || !amount || isLoading}
-                        className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-primary/20"
+                        className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition-all"
                     >
                         Review Transaction
                     </button>
@@ -219,7 +219,7 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
             {/* Confirmation Modal */}
             {showConfirm && (
                 <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
-                    <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-slide-up space-y-6">
+                    <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6 animate-slide-up space-y-6">
                         <h3 className="text-lg font-bold text-foreground">Confirm Transfer</h3>
 
                         <div className="space-y-4">

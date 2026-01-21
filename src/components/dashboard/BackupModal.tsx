@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { LumenWallet } from '../../modules/sdk/key-manager';
 
 interface BackupModalProps {
@@ -77,10 +78,10 @@ export const BackupModal: React.FC<BackupModalProps> = ({ wallet, onClose }) => 
         URL.revokeObjectURL(url);
     };
 
-    return (
-        <div className="fixed inset-0 z-[2000] bg-background/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in text-left">
+    const modalContent = (
+        <div className="fixed inset-0 z-[99999] bg-background/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in text-left" onClick={onClose} style={{ margin: 0, left: 0, right: 0, top: 0, bottom: 0 }}>
             {!isAuthenticated ? (
-                <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-slide-up">
+                <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-xl font-bold text-foreground">Unlock Backup</h3>
                         <button onClick={onClose} className="p-2 hover:bg-surfaceHighlight rounded-full transition-colors">
@@ -204,4 +205,6 @@ export const BackupModal: React.FC<BackupModalProps> = ({ wallet, onClose }) => 
             )}
         </div>
     );
+
+    return createPortal(modalContent, document.body);
 };
