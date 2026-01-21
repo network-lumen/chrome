@@ -13,7 +13,7 @@ export default defineConfig({
     wasm(),
     topLevelAwait(),
     nodePolyfills({
-      include: ['buffer', 'util', 'stream', 'process', 'path', 'os'],
+      include: ['buffer', 'util', 'stream', 'process', 'path', 'os', 'crypto'],
       overrides: {
         fs: path.resolve(__dirname, 'src/mocks/fs.ts'),
       },
@@ -29,6 +29,7 @@ export default defineConfig({
     alias: {
       stream: 'stream-browserify',
       util: 'util',
+      crypto: 'crypto-browserify',
       url: path.resolve(__dirname, 'src/mocks/url.ts'),
       'fs/promises': path.resolve(__dirname, 'src/mocks/fs.ts'),
       fs: path.resolve(__dirname, 'src/mocks/fs.ts'),

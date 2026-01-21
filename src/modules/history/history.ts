@@ -340,11 +340,12 @@ export class HistoryManager {
                                         txRaw.body.messages.forEach((msg) => {
                                             if (msg.typeUrl === '/cosmos.bank.v1beta1.MsgSend') {
                                                 const decoded = MsgSend.decode(msg.value);
+                                                const amount = decoded.amount[0];
+                                                const amt = amount ? (parseFloat(amount.amount) / 1000000).toFixed(6) : "0";
+                                                const h = toHex(sha256(fromBase64(txBase64))).toUpperCase();
+                                                
+                                                // Check if receiving
                                                 if (decoded.toAddress === address) {
-                                                    const amount = decoded.amount[0];
-                                                    const amt = amount ? (parseFloat(amount.amount) / 1000000).toFixed(6) : "0";
-                                                    const h = toHex(sha256(fromBase64(txBase64))).toUpperCase();
-
                                                     this.saveTransaction(address, {
                                                         hash: h,
                                                         height: height.toString(),
@@ -353,6 +354,20 @@ export class HistoryManager {
                                                         amount: amt,
                                                         denom: 'LMN',
                                                         counterparty: decoded.fromAddress,
+                                                        status: 'success'
+                                                    });
+                                                }
+                                                
+                                                // Check if sending
+                                                if (decoded.fromAddress === address) {
+                                                    this.saveTransaction(address, {
+                                                        hash: h,
+                                                        height: height.toString(),
+                                                        timestamp: blk.header.time,
+                                                        type: 'send',
+                                                        amount: amt,
+                                                        denom: 'LMN',
+                                                        counterparty: decoded.toAddress,
                                                         status: 'success'
                                                     });
                                                 }

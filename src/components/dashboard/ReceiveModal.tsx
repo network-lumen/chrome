@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import QRCode from 'react-qr-code';
 import { X, Copy, Check } from 'lucide-react';
 
@@ -16,9 +17,9 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({ address, onClose }) 
         setTimeout(() => setCopied(false), 2000);
     };
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-            <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6 relative shadow-2xl animate-slide-up">
+    const modalContent = (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in" onClick={onClose} style={{ margin: 0, left: 0, right: 0, top: 0, bottom: 0 }}>
+            <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6 relative shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
                 <button
                     onClick={onClose}
                     className="absolute top-4 right-4 text-[var(--text-muted)] hover:text-foreground transition-colors"
@@ -58,4 +59,6 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({ address, onClose }) 
             </div>
         </div>
     );
+
+    return createPortal(modalContent, document.body);
 };

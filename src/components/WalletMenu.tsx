@@ -66,7 +66,7 @@ export const WalletMenu: React.FC<WalletMenuProps> = ({
             {isOpen && (
                 <>
                     <div className="fixed inset-0 z-[99998]" onClick={() => { setIsOpen(false); setEditingIdx(null); }}></div>
-                    <div className="absolute right-0 top-full mt-2 w-64 bg-surface border border-border rounded-xl shadow-2xl z-[99999] animate-fade-in overflow-hidden">
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-surface border border-border rounded-xl z-[99999] animate-fade-in overflow-hidden">
                         <div className="p-3 border-b border-border flex items-center justify-between">
                             <span className="text-[10px] font-bold text-[var(--text-dim)] uppercase tracking-widest">Wallets</span>
                             <span className="text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded font-mono">{wallets.length} Active</span>

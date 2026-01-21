@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, User, Search, Check } from 'lucide-react';
 import { useContacts } from '../../hooks/useContacts';
 
@@ -31,9 +32,9 @@ export const ContactsModal: React.FC<ContactsModalProps> = ({ onClose, onSelect 
         c.address.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-            <div className="w-full max-w-sm h-[500px] bg-surface border border-border rounded-xl shadow-2xl flex flex-col relative overflow-hidden">
+    const modalContent = (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in" onClick={onClose} style={{ margin: 0, left: 0, right: 0, top: 0, bottom: 0 }}>
+            <div className="w-full max-w-sm h-[500px] bg-surface border border-border rounded-xl shadow-2xl flex flex-col relative overflow-hidden" onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
                 <div className="p-4 border-b border-border flex items-center justify-between bg-surface/80 backdrop-blur">
                     <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
@@ -154,4 +155,6 @@ export const ContactsModal: React.FC<ContactsModalProps> = ({ onClose, onSelect 
             </div>
         </div>
     );
+
+    return createPortal(modalContent, document.body);
 };

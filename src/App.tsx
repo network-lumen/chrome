@@ -6,6 +6,8 @@ import { Unlock } from './components/onboarding/Unlock';
 import { WalletMenu } from './components/WalletMenu';
 import { Settings } from './components/Settings';
 import { BackupModal } from './components/dashboard/BackupModal';
+import { Staking } from './components/staking/Staking';
+import { Governance } from './components/governance/Governance';
 import { VaultManager } from './modules/vault/vault';
 import { openExpandedView } from './utils/navigation';
 import { Send } from './components/send/Send';
@@ -191,21 +193,19 @@ function App() {
     return <div className="h-full flex items-center justify-center bg-background text-primary">Loading...</div>;
   }
 
-  const isWide = window.innerWidth > 400;
-
   return (
     <div
-      className={`bg-background text-foreground font-sans overflow-hidden flex flex-col h-screen ${isWide ? 'max-w-md mx-auto shadow-2xl border-x border-border' : 'w-full'} `}
+      className={`bg-background text-foreground font-sans overflow-hidden flex flex-col h-full w-full max-w-md mx-auto`}
       onClick={handleInteraction}
       onKeyDown={handleInteraction}
       onMouseMove={handleInteraction}
     >
       {/* Header */}
       {!isLocked && activeWallet && (
-        <header className="h-16 border-b border-border flex items-center px-6 justify-between bg-surface/50 backdrop-blur-md z-10 shrink-0">
-          <div className="flex items-center gap-2">
-            <img src="/icons/logo.png" alt="Lumen" className="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-            <span className="font-bold tracking-tight text-foreground text-lg font-display">Lumen</span>
+        <header className="h-16 border-b border-border flex items-center px-5 justify-between bg-surface/80 backdrop-blur-xl z-10 shrink-0 relative">
+          <div className="flex items-center gap-2.5">
+            <img src="/icons/logo.png" alt="Lumen" className="w-8 h-8 object-contain drop-shadow-[0_0_12px_rgba(99,102,241,0.4)] animate-pulse-slow" />
+            <span className="font-bold text-foreground text-lg tracking-tight">Lumen</span>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -246,7 +246,7 @@ function App() {
         />
       )}
 
-      <main className="flex-1 overflow-y-auto relative scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
+      <main className="flex-1 overflow-y-auto relative">
         <Routes>
           <Route path="/" element={
             isLocked
@@ -282,6 +282,12 @@ function App() {
           <Route path="/send" element={
             activeWallet ? <Send activeKeys={activeWallet} onBack={() => navigate('/dashboard')} /> : <Navigate to="/" />
           } />
+          <Route path="/stake" element={
+            activeWallet ? <Staking walletKeys={activeWallet} onBack={() => navigate('/dashboard')} /> : <Navigate to="/" />
+          } />
+          <Route path="/governance" element={
+            activeWallet ? <Governance walletKeys={activeWallet} onBack={() => navigate('/dashboard')} /> : <Navigate to="/" />
+          } />
           <Route path="/settings" element={
             <Settings onBack={() => navigate('/dashboard')} />
           } />
@@ -291,28 +297,28 @@ function App() {
 
       {/* Footer Navigation */}
       {!isLocked && activeWallet && location.pathname !== '/settings' && location.pathname !== '/wallet/create' && (
-        <footer className="h-16 bg-surface border-t border-border flex items-center justify-around px-2 z-10 shrink-0">
+        <footer className="h-16 bg-surface/80 backdrop-blur-xl border-t border-border flex items-center justify-around px-2 z-10 shrink-0">
           <button
             onClick={() => navigate('/dashboard')}
-            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${location.pathname === '/dashboard' ? 'text-primary' : 'text-gray-500 hover:text-gray-300'} `}
+            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all duration-300 ${location.pathname === '/dashboard' ? 'text-primary scale-110' : 'text-gray-500 hover:text-gray-300 hover:scale-105'} `}
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-            <span className="text-[10px] font-medium">Wallet</span>
+            <span className="text-[10px] font-semibold">Wallet</span>
           </button>
           <button
             disabled
-            className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all text-gray-700/50 cursor-not-allowed"
+            className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all text-gray-700/50 cursor-not-allowed opacity-40"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-            <span className="text-[10px] font-medium">Swap</span>
+            <span className="text-[10px] font-semibold">Swap</span>
           </button>
           <button
             disabled
-            className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all text-gray-700/50 cursor-not-allowed"
+            className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all text-gray-700/50 cursor-not-allowed opacity-40"
           >
             {/* Using a Bridge-like icon (External Link or similar) */}
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-            <span className="text-[10px] font-medium">Bridge</span>
+            <span className="text-[10px] font-semibold">Bridge</span>
           </button>
         </footer>
       )}
