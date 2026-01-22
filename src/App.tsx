@@ -25,6 +25,7 @@ function App() {
   const activeWallet = wallets[activeWalletIndex] || null;
 
   const [isLocked, setIsLocked] = useState(false);
+  const [hasVault, setHasVault] = useState(false);
   const [loading, setLoading] = useState(true);
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const isLockedRef = useRef(isLocked);
@@ -62,8 +63,9 @@ function App() {
   /* Initial Load & Session Check */
   useEffect(() => {
     const checkSession = async () => {
-      const hasWallet = await VaultManager.hasWallet();
-      if (hasWallet) {
+      const exists = await VaultManager.hasWallet();
+      setHasVault(exists);
+      if (exists) {
         // Check if we already have an active session
         try {
           const unlockedWallets = await VaultManager.getWallets();
@@ -111,8 +113,9 @@ function App() {
     checkSession();
 
     const interval = setInterval(async () => {
-      const hasWallet = await VaultManager.hasWallet();
-      if (!hasWallet || isLockedRef.current) return;
+      const exists = await VaultManager.hasWallet();
+      setHasVault(exists);
+      if (!exists || isLockedRef.current) return;
       const expired = await VaultManager.isSessionExpired();
       if (expired) {
         handleLock();
@@ -126,6 +129,7 @@ function App() {
     try {
       const unlockedWallets = await VaultManager.unlock(password);
       setWallets(unlockedWallets);
+      setHasVault(true);
 
       /* Restore active wallet */
       const lastActive = localStorage.getItem('lastActiveWalletAddress');
@@ -145,6 +149,7 @@ function App() {
   const handleWalletReady = async () => {
     try {
       const unlockedWallets = await VaultManager.getWallets();
+      setHasVault(true);
 
       /* Only jump to last wallet if we just added one */
       if (unlockedWallets.length > wallets.length && wallets.length > 0) {
@@ -161,7 +166,8 @@ function App() {
       setWallets(unlockedWallets);
       setIsLocked(false);
       navigate('/dashboard');
-    } catch {
+    } catch (e: any) {
+      console.error("Wallet ready failed:", e);
       setIsLocked(true);
     }
   };
@@ -219,7 +225,7 @@ function App() {
     return <div className="h-full flex items-center justify-center bg-background text-primary">Loading...</div>;
   }
 
-  const isLandingPage = (location.pathname.includes('/wallet/create') || location.pathname === '/onboarding') && wallets.length === 0;
+  const isLandingPage = (location.pathname.includes('/wallet/create') || location.pathname === '/onboarding') && wallets.length === 0 && !hasVault;
 
   if (isLandingPage) {
     return (
@@ -230,7 +236,7 @@ function App() {
               <WalletTab
                 onWalletReady={handleWalletReady}
                 activeKeys={null}
-                isAdding={wallets.length > 0}
+                isAdding={wallets.length > 0 || hasVault}
                 onCancel={() => navigate('/dashboard')}
                 showLinkModal={false}
                 onCloseLinkModal={() => { }}
@@ -308,7 +314,7 @@ function App() {
               <WalletTab
                 onWalletReady={handleWalletReady}
                 activeKeys={activeWallet}
-                isAdding={false}
+                isAdding={wallets.length > 0 || hasVault}
                 onCancel={() => { }}
                 showLinkModal={isLinkModalOpen}
                 onCloseLinkModal={() => setIsLinkModalOpen(false)}
@@ -317,15 +323,18 @@ function App() {
           } />
           <Route path="/wallet/create" element={
             <div className="h-full">
-              <WalletTab
-                onWalletReady={handleWalletReady}
-                activeKeys={null}
-                isAdding={wallets.length > 0}
-                onCancel={() => navigate('/dashboard')}
-                /* No modal for create flow */
-                showLinkModal={false}
-                onCloseLinkModal={() => { }}
-              />
+              {isLocked && hasVault ? (
+                <Navigate to="/" />
+              ) : (
+                <WalletTab
+                  onWalletReady={handleWalletReady}
+                  activeKeys={null}
+                  isAdding={wallets.length > 0 || hasVault}
+                  onCancel={() => navigate('/dashboard')}
+                  showLinkModal={false}
+                  onCloseLinkModal={() => { }}
+                />
+              )}
             </div>
           } />
           <Route path="/swap" element={

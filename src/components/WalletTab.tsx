@@ -50,6 +50,7 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
     /* UI State */
     const [showReceive, setShowReceive] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
+    const [copiedAddress, setCopiedAddress] = useState(false);
 
     /* Fetch Balance Effect */
     React.useEffect(() => {
@@ -78,7 +79,7 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                     lastBalanceRef.current = newBalRaw;
                 }
             } catch (e) {
-                console.error("Balance fetch error:", e);
+                console.warn("Balance fetch failed (transient):", e);
                 /* Keep previous/default balance on error or show indicator */
             }
         };
@@ -121,7 +122,10 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
             onWalletReady();
         } catch (e: any) {
             console.error(e);
-            setError("Failed to add wallet: " + e.message);
+            const msg = e.message === 'Session expired.'
+                ? "Wallet is locked. Please unlock your wallet in the extension popup first before adding a new one."
+                : "Failed to add wallet: " + e.message;
+            setError(msg);
             setIsLoading(false);
         }
     };
@@ -130,6 +134,15 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
         if (!tempWallet) return;
         try {
             setIsLoading(true);
+
+            /* Safety Guard: Check if a vault already exists on disk */
+            const exists = await VaultManager.hasWallet();
+            if (exists) {
+                setError("A wallet already exists on this device. Please unlock it and use 'Add Wallet' instead of creating a new vault.");
+                setIsLoading(false);
+                return;
+            }
+
             /* Initial setup -> Just array of one */
             await VaultManager.lock([tempWallet], password);
             onWalletReady();
@@ -249,15 +262,32 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                                 <div className="relative bg-foreground/5 rounded-xl p-3.5 flex items-center justify-between hover:bg-foreground/10 transition-colors">
                                     <div className="flex-1 min-w-0 pr-4">
                                         <div className="text-[8px] font-black text-foreground/30 mb-1 uppercase tracking-[0.2em]">Address</div>
-                                        <div className="font-mono text-[10px] text-foreground/60 break-all leading-relaxed tracking-tight">{activeKeys.address}</div>
+                                        <div className="font-mono text-[10px] text-foreground/60 leading-relaxed tracking-tight break-all">
+                                            {activeKeys.address.substring(0, 24)}
+                                            <wbr />
+                                            {activeKeys.address.substring(24)}
+                                        </div>
                                     </div>
                                     <button
-                                        onClick={() => navigator.clipboard.writeText(activeKeys.address)}
-                                        className="p-2.5 bg-surface rounded-lg text-foreground/40 hover:text-primary hover:shadow-lg transition-all active:scale-90 border border-border/50"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(activeKeys.address);
+                                            setCopiedAddress(true);
+                                            setTimeout(() => setCopiedAddress(false), 2000);
+                                        }}
+                                        className={`p-2.5 rounded-lg transition-all active:scale-90 border border-border/50 ${copiedAddress
+                                            ? 'bg-green-500 text-white shadow-lg shadow-green-500/20 border-green-500'
+                                            : 'bg-surface text-foreground/40 hover:text-primary hover:shadow-lg'
+                                            }`}
                                     >
-                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                        </svg>
+                                        {copiedAddress ? (
+                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        ) : (
+                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                            </svg>
+                                        )}
                                     </button>
                                 </div>
                             </div>
@@ -315,6 +345,8 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
         return (
             <MnemonicDisplay
                 mnemonic={tempWallet.mnemonic}
+                pqcKey={tempWallet.pqcKey}
+                address={tempWallet.address}
                 onConfirm={() => setView('mnemonic-verify')}
                 onBack={() => setView('create-method')}
             />
@@ -347,6 +379,17 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                         setIsImporting(true);
                         setError(null);
 
+                        // If adding, ensure session is still valid
+                        if (isAdding) {
+                            try {
+                                await VaultManager.getWallets();
+                            } catch (e: any) {
+                                setError("Session expired or vault locked. Please unlock and try again.");
+                                setIsImporting(false);
+                                return;
+                            }
+                        }
+
                         const keys = await KeyManager.importWallet(mnemonic, pqcKey);
                         setTempWallet(keys);
 
@@ -371,6 +414,7 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                 }}
                 onBack={() => setView(isAdding ? 'create-method' : 'welcome')}
                 isLoading={isImporting}
+                error={_error}
             />
         );
     }
