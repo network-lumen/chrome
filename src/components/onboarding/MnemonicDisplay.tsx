@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
+import type { PqcKeyData } from '../../types/wallet';
 
 interface MnemonicDisplayProps {
     mnemonic: string;
+    pqcKey: PqcKeyData;
+    address: string;
     onConfirm: () => void;
     onBack: () => void;
 }
 
-export const MnemonicDisplay: React.FC<MnemonicDisplayProps> = ({ mnemonic, onConfirm, onBack }) => {
+export const MnemonicDisplay: React.FC<MnemonicDisplayProps> = ({ mnemonic, pqcKey, address, onConfirm, onBack }) => {
     const [copied, setCopied] = useState(false);
     const [confirmed, setConfirmed] = useState(false);
     const words = mnemonic.split(' ');
@@ -15,6 +18,19 @@ export const MnemonicDisplay: React.FC<MnemonicDisplayProps> = ({ mnemonic, onCo
         navigator.clipboard.writeText(mnemonic);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
+    };
+
+    const downloadPqcBackup = () => {
+        const data = JSON.stringify({ pqcKey: pqcKey }, null, 2);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `lumen_pqc_${address.substring(0, 8)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     };
 
     return (
@@ -46,8 +62,8 @@ export const MnemonicDisplay: React.FC<MnemonicDisplayProps> = ({ mnemonic, onCo
                             <p className="font-semibold mb-1">Never share your recovery phrase!</p>
                             <ul className="space-y-1 list-disc list-inside">
                                 <li>Anyone with this phrase can access your funds</li>
-                                <li>Lumen will never ask for your recovery phrase</li>
-                                <li>Store it offline in a secure location</li>
+                                <li>Store both mnemonic and PQC keys offline securely</li>
+                                <li>PQC keys cannot be recovered from mnemonic alone</li>
                             </ul>
                         </div>
                     </div>
@@ -84,10 +100,32 @@ export const MnemonicDisplay: React.FC<MnemonicDisplayProps> = ({ mnemonic, onCo
                                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                 </svg>
-                                Copy to Clipboard
+                                Copy Mnemonic
                             </>
                         )}
                     </button>
+                </div>
+
+                {/* PQC Section */}
+                <div className="mb-6 space-y-3">
+                    <div className="flex items-center justify-between ml-1">
+                        <label className="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider">PQC Key Data (JSON)</label>
+                        <span className="text-[10px] text-primary font-bold">Recommended Backup</span>
+                    </div>
+                    <div className="p-4 bg-surface border border-border rounded-xl space-y-4">
+                        <div className="bg-black/20 border border-border rounded-lg p-3 text-[8px] font-mono break-all leading-tight max-h-24 overflow-y-auto whitespace-pre-wrap">
+                            {JSON.stringify({ pqcKey: pqcKey }, null, 2)}
+                        </div>
+                        <button
+                            onClick={downloadPqcBackup}
+                            className="w-full py-3 bg-primary/10 hover:bg-primary/20 border border-primary/30 rounded-lg transition-all flex items-center justify-center gap-2 text-xs font-bold text-primary"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download PQC Backup JSON
+                        </button>
+                    </div>
                 </div>
 
                 {/* Confirmation Checkbox */}
@@ -99,8 +137,8 @@ export const MnemonicDisplay: React.FC<MnemonicDisplayProps> = ({ mnemonic, onCo
                         className="mt-1 w-5 h-5 rounded border-2 border-border bg-background checked:bg-primary checked:border-primary focus:ring-2 focus:ring-primary/50 cursor-pointer"
                     />
                     <div className="text-sm text-[var(--text-muted)] leading-relaxed">
-                        <p className="font-semibold text-foreground mb-1">I have saved my recovery phrase</p>
-                        <p className="text-xs">I understand that if I lose my recovery phrase, I will not be able to access my wallet.</p>
+                        <p className="font-semibold text-foreground mb-1">I have saved my mnemonic and PQC key data</p>
+                        <p className="text-xs">I understand that I need both to fully restore my wallet functions (PQC features) in the future.</p>
                     </div>
                 </label>
             </div>

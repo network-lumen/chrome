@@ -185,4 +185,13 @@ export class KeyManager {
             pqcKey: pqcKey
         };
     }
+
+    /**
+     * Helper to derive an address from a mnemonic
+     */
+    static async deriveAddress(mnemonic: string): Promise<string> {
+        const wallet = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic, { prefix: 'lmn' });
+        const accounts = await wallet.getAccounts();
+        return accounts[0].address;
+    }
 }

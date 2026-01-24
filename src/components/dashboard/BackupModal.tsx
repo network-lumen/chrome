@@ -122,7 +122,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({ wallet, onClose }) => 
                     </form>
                 </div>
             ) : (
-                <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-slide-up flex flex-col max-h-[90vh]">
+                <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-slide-up flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-xl font-bold text-foreground">Secure Backup</h3>
                         <button onClick={onClose} className="p-2 hover:bg-surfaceHighlight rounded-full transition-colors">

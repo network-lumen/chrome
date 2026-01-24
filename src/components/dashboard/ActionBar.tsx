@@ -13,49 +13,53 @@ export const ActionBar: React.FC<ActionBarProps> = ({ onReceive, onHistory }) =>
     const buttons = [
         {
             label: 'Send',
-            icon: <Send className="w-4 h-4 text-white" />,
+            icon: <Send size={20} />,
             onClick: () => navigate('/send'),
-            active: true,
-            bg: 'bg-primary'
+            active: true
         },
         {
             label: 'Receive',
-            icon: <QrCode className="w-4 h-4 text-white" />,
+            icon: <QrCode size={20} />,
             onClick: onReceive,
-            active: true,
-            bg: 'bg-lumen'
+            active: true
         },
         {
             label: 'Stake',
-            icon: <Coins className="w-4 h-4 text-white" />,
+            icon: <Coins size={20} />,
             onClick: () => navigate('/stake'),
-            active: true,
-            bg: 'bg-green-500'
+            active: true
         },
         {
             label: 'Vote',
-            icon: <Vote className="w-4 h-4 text-white" />,
+            icon: <Vote size={20} />,
             onClick: () => navigate('/governance'),
-            active: true,
-            bg: 'bg-purple-500'
+            active: true
         },
         {
             label: 'History',
-            icon: <Clock className="w-4 h-4 text-white" />,
+            icon: <Clock size={20} />,
             onClick: onHistory,
-            active: true,
-            bg: 'bg-gray-600'
+            active: true
         },
     ];
 
     return (
-        <div className="grid grid-cols-5 gap-3 px-4 py-4">
+        <div className="grid grid-cols-5 gap-3 px-4 py-3">
             {buttons.map((btn, idx) => (
-                <div key={idx} className="flex flex-col items-center gap-2 group cursor-pointer" onClick={btn.active ? btn.onClick : undefined}>
-                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-300 ${btn.active ? `${btn.bg} hover:scale-110 hover:shadow-lg active:scale-95` : 'bg-surfaceHighlight opacity-50 cursor-not-allowed'}`}>
-                        {btn.icon}
+                <div
+                    key={idx}
+                    className={`flex flex-col items-center gap-2 group cursor-pointer transition-all duration-300 ${!btn.active ? 'opacity-40 grayscale cursor-not-allowed' : 'hover:-translate-y-1'}`}
+                    onClick={btn.active ? btn.onClick : undefined}
+                >
+                    <div className={`w-[52px] h-[52px] rounded-2xl flex items-center justify-center transition-all duration-500 glass-squircle relative group-hover:shadow-[0_8px_20px_-6px_rgba(0,0,0,0.5)]`}>
+                        {/* Inner Glow Effect */}
+                        <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+                        <div className={`transition-all duration-500 group-hover:scale-110 group-active:scale-90 ${btn.active ? 'text-foreground' : 'text-foreground/20'}`}>
+                            {btn.icon}
+                        </div>
                     </div>
-                    <span className={`text-[10px] font-medium transition-colors ${btn.active ? 'text-foreground group-hover:text-primary' : 'text-[var(--text-muted)]'}`}>
+                    <span className={`text-[9px] font-black uppercase tracking-[0.1em] transition-colors duration-300 ${btn.active ? 'text-foreground/40 group-hover:text-primary' : 'text-foreground/20'}`}>
                         {btn.label}
                     </span>
                 </div>
