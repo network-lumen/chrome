@@ -20,7 +20,7 @@ export interface Transaction {
     hash: string;
     height: string;
     timestamp: string;
-    type: 'send' | 'receive';
+    type: 'send' | 'receive' | 'stake' | 'unstake' | 'claim';
     amount: string;
     denom: string;
     counterparty: string;
@@ -343,7 +343,7 @@ export class HistoryManager {
                                                 const amount = decoded.amount[0];
                                                 const amt = amount ? (parseFloat(amount.amount) / 1000000).toFixed(6) : "0";
                                                 const h = toHex(sha256(fromBase64(txBase64))).toUpperCase();
-                                                
+
                                                 // Check if receiving
                                                 if (decoded.toAddress === address) {
                                                     this.saveTransaction(address, {
@@ -357,7 +357,7 @@ export class HistoryManager {
                                                         status: 'success'
                                                     });
                                                 }
-                                                
+
                                                 // Check if sending
                                                 if (decoded.fromAddress === address) {
                                                     this.saveTransaction(address, {
@@ -371,6 +371,18 @@ export class HistoryManager {
                                                         status: 'success'
                                                     });
                                                 }
+                                            } else if (msg.typeUrl === '/cosmos.staking.v1beta1.MsgDelegate') {
+                                                const h = toHex(sha256(fromBase64(txBase64))).toUpperCase();
+                                                this.saveTransaction(address, {
+                                                    hash: h,
+                                                    height: height.toString(),
+                                                    timestamp: blk.header.time,
+                                                    type: 'stake',
+                                                    amount: 'Checking...',
+                                                    denom: 'LMN',
+                                                    counterparty: 'Lumen Staking',
+                                                    status: 'success'
+                                                });
                                             }
                                         });
                                     } catch { }

@@ -74,6 +74,22 @@ export async function fetchDelegations(delegatorAddress: string) {
     }
 }
 
+/* Fetch Unbonding Delegations */
+export async function fetchUnbondingDelegations(delegatorAddress: string) {
+    try {
+        const res = await fetch(`${API_ENDPOINT}/cosmos/staking/v1beta1/delegators/${delegatorAddress}/unbonding_delegations`);
+        if (!res.ok) {
+            if (res.status === 404) return [];
+            throw new Error(`Failed to fetch unbonding delegations: ${res.status}`);
+        }
+        const data = await res.json();
+        return data.unbonding_responses || [];
+    } catch (error) {
+        console.error('Error fetching unbonding delegations:', error);
+        return [];
+    }
+}
+
 /* Fetch Rewards */
 export async function fetchRewards(delegatorAddress: string) {
     try {
@@ -139,18 +155,27 @@ export async function delegateTokens(
     const { accountNumber, sequence } = await fetchAccountInfo(walletData.address);
 
     /* Prepare PQC Keys */
-    const pqcData = walletData.pqcKey || walletData.pqc;
-    if (!pqcData) throw new Error("Missing PQC key data");
+    const pqcData = ((walletData.pqcKey as any)?.publicKey || (walletData.pqcKey as any)?.public_key)
+        ? walletData.pqcKey
+        : ((walletData.pqc as any)?.publicKey || (walletData.pqc as any)?.public_key)
+            ? walletData.pqc
+            : (walletData.pqcKey || walletData.pqc);
 
-    const rawPriv = pqcData.privateKey;
-    const rawPub = pqcData.publicKey;
-    if (!rawPriv || !rawPub) throw new Error("Missing PQC keys");
+    if (!pqcData) throw new Error("Missing PQC key data. Please re-import your wallet.");
+
+    const rawPriv = pqcData.privateKey || pqcData.private_key || (pqcData as any).encryptedPrivateKey;
+    const rawPub = pqcData.publicKey || pqcData.public_key;
+
+    if (!rawPriv || !rawPub) throw new Error("PQC keys missing sub-properties. Please re-import your wallet.");
 
     const pqcPrivKey = ensureUint8Array(rawPriv);
     const pqcPubKey = ensureUint8Array(rawPub);
 
-    if (pqcPubKey.length !== 1952 || pqcPrivKey.length !== 4000) {
-        throw new Error("Invalid PQC key length");
+    if (pqcPubKey.length !== 1952) {
+        throw new Error(`Invalid PQC Public Key. Expected 1952 bytes, got ${pqcPubKey.length}.`);
+    }
+    if (pqcPrivKey.length !== 4000) {
+        throw new Error(`Invalid PQC Private Key. Expected 4000 bytes, got ${pqcPrivKey.length}.`);
     }
 
     /* Create Delegate Message */
@@ -248,18 +273,27 @@ export async function undelegateTokens(
     const { accountNumber, sequence } = await fetchAccountInfo(walletData.address);
 
     /* Prepare PQC Keys */
-    const pqcData = walletData.pqcKey || walletData.pqc;
-    if (!pqcData) throw new Error("Missing PQC key data");
+    const pqcData = ((walletData.pqcKey as any)?.publicKey || (walletData.pqcKey as any)?.public_key)
+        ? walletData.pqcKey
+        : ((walletData.pqc as any)?.publicKey || (walletData.pqc as any)?.public_key)
+            ? walletData.pqc
+            : (walletData.pqcKey || walletData.pqc);
 
-    const rawPriv = pqcData.privateKey;
-    const rawPub = pqcData.publicKey;
-    if (!rawPriv || !rawPub) throw new Error("Missing PQC keys");
+    if (!pqcData) throw new Error("Missing PQC key data. Please re-import your wallet.");
+
+    const rawPriv = pqcData.privateKey || pqcData.private_key || (pqcData as any).encryptedPrivateKey;
+    const rawPub = pqcData.publicKey || pqcData.public_key;
+
+    if (!rawPriv || !rawPub) throw new Error("PQC keys missing sub-properties. Please re-import your wallet.");
 
     const pqcPrivKey = ensureUint8Array(rawPriv);
     const pqcPubKey = ensureUint8Array(rawPub);
 
-    if (pqcPubKey.length !== 1952 || pqcPrivKey.length !== 4000) {
-        throw new Error("Invalid PQC key length");
+    if (pqcPubKey.length !== 1952) {
+        throw new Error(`Invalid PQC Public Key. Expected 1952 bytes, got ${pqcPubKey.length}.`);
+    }
+    if (pqcPrivKey.length !== 4000) {
+        throw new Error(`Invalid PQC Private Key. Expected 4000 bytes, got ${pqcPrivKey.length}.`);
     }
 
     /* Create Undelegate Message */
@@ -356,18 +390,27 @@ export async function claimRewards(
     const { accountNumber, sequence } = await fetchAccountInfo(walletData.address);
 
     /* Prepare PQC Keys */
-    const pqcData = walletData.pqcKey || walletData.pqc;
-    if (!pqcData) throw new Error("Missing PQC key data");
+    const pqcData = ((walletData.pqcKey as any)?.publicKey || (walletData.pqcKey as any)?.public_key)
+        ? walletData.pqcKey
+        : ((walletData.pqc as any)?.publicKey || (walletData.pqc as any)?.public_key)
+            ? walletData.pqc
+            : (walletData.pqcKey || walletData.pqc);
 
-    const rawPriv = pqcData.privateKey;
-    const rawPub = pqcData.publicKey;
-    if (!rawPriv || !rawPub) throw new Error("Missing PQC keys");
+    if (!pqcData) throw new Error("Missing PQC key data. Please re-import your wallet.");
+
+    const rawPriv = pqcData.privateKey || pqcData.private_key || (pqcData as any).encryptedPrivateKey;
+    const rawPub = pqcData.publicKey || pqcData.public_key;
+
+    if (!rawPriv || !rawPub) throw new Error("PQC keys missing sub-properties. Please re-import your wallet.");
 
     const pqcPrivKey = ensureUint8Array(rawPriv);
     const pqcPubKey = ensureUint8Array(rawPub);
 
-    if (pqcPubKey.length !== 1952 || pqcPrivKey.length !== 4000) {
-        throw new Error("Invalid PQC key length");
+    if (pqcPubKey.length !== 1952) {
+        throw new Error(`Invalid PQC Public Key. Expected 1952 bytes, got ${pqcPubKey.length}.`);
+    }
+    if (pqcPrivKey.length !== 4000) {
+        throw new Error(`Invalid PQC Private Key. Expected 4000 bytes, got ${pqcPrivKey.length}.`);
     }
 
     /* Create Withdraw Reward Message */
