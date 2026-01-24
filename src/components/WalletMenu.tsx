@@ -51,8 +51,8 @@ export const WalletMenu: React.FC<WalletMenuProps> = ({
                 className="flex items-center gap-2 p-2 rounded-lg hover:bg-surfaceHighlight transition-all group cursor-pointer"
                 title="Wallet Settings"
             >
-                <div className="flex flex-col items-end mr-1">
-                    <span className="text-xs font-bold text-foreground tracking-wide">{activeWalletName}</span>
+                <div className="flex flex-col items-end mr-1 min-w-0">
+                    <span className="text-xs font-bold text-foreground tracking-wide truncate max-w-[120px]">{activeWalletName}</span>
                     <span className="text-[9px] text-green-400 font-medium tracking-wider">Connected</span>
                 </div>
                 <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center group-hover:border-primary/50 transition-colors">

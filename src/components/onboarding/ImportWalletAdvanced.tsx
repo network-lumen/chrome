@@ -5,9 +5,10 @@ interface ImportWalletAdvancedProps {
     onImport: (mnemonic: string, pqcKey: PqcKeyData) => void;
     onBack: () => void;
     isLoading?: boolean;
+    error?: string | null;
 }
 
-export const ImportWalletAdvanced: React.FC<ImportWalletAdvancedProps> = ({ onImport, onBack, isLoading }) => {
+export const ImportWalletAdvanced: React.FC<ImportWalletAdvancedProps> = ({ onImport, onBack, isLoading, error: externalError }) => {
     const [mnemonic, setMnemonic] = useState('');
     const [pqcKeyFile, setPqcKeyFile] = useState<PqcKeyData | null>(null);
     const [importMode, setImportMode] = useState<'file' | 'code'>('file');
@@ -74,7 +75,7 @@ export const ImportWalletAdvanced: React.FC<ImportWalletAdvancedProps> = ({ onIm
 
     const handleImport = () => {
         const words = mnemonic.trim().split(/\s+/);
-        
+
         if (words.length !== 12 && words.length !== 24) {
             setError('Recovery phrase must be 12 or 24 words');
             return;
@@ -115,9 +116,8 @@ export const ImportWalletAdvanced: React.FC<ImportWalletAdvancedProps> = ({ onIm
                         <label className="text-xs font-semibold text-[var(--text-muted)] ml-1 uppercase tracking-wide">
                             1. Mnemonic Phrase
                         </label>
-                        <span className={`text-xs font-semibold ${
-                            wordCount === 12 || wordCount === 24 ? 'text-green-500' : 'text-[var(--text-muted)]'
-                        }`}>
+                        <span className={`text-xs font-semibold ${wordCount === 12 || wordCount === 24 ? 'text-green-500' : 'text-[var(--text-muted)]'
+                            }`}>
                             {wordCount} words
                         </span>
                     </div>
@@ -211,12 +211,12 @@ export const ImportWalletAdvanced: React.FC<ImportWalletAdvancedProps> = ({ onIm
                 </div>
 
                 {/* Error Message */}
-                {error && (
+                {(error || externalError) && (
                     <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-2 animate-fade-in">
                         <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <p className="text-red-400 text-sm">{error}</p>
+                        <p className="text-red-400 text-sm">{error || externalError}</p>
                     </div>
                 )}
 

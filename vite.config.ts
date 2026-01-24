@@ -37,6 +37,7 @@ export default defineConfig({
     },
   },
   build: {
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),
@@ -44,6 +45,23 @@ export default defineConfig({
       },
       output: {
         entryFileNames: '[name].js',
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              return 'vendor-react';
+            }
+            if (id.includes('@cosmjs') || id.includes('cosmjs-types')) {
+              return 'vendor-cosmjs';
+            }
+            if (id.includes('@lumen-chain/sdk')) {
+              return 'vendor-lumen';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-ui';
+            }
+            return 'vendor';
+          }
+        }
       },
     },
   },
