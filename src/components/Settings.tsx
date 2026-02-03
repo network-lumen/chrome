@@ -9,12 +9,22 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     const [type, setType] = useState<'minute' | 'hour' | 'day'>('minute');
     const [value, setValue] = useState<number>(5);
     const [saved, setSaved] = useState(false);
+    const [connectedDApps, setConnectedDApps] = useState<string[]>([]);
 
     useEffect(() => {
         const load = async () => {
             const current = await VaultManager.getLockSettings();
             setType(current.type);
             setValue(current.value);
+
+            // Load connected dApps
+            try {
+                const result = await chrome.storage.local.get(['connectedOrigins']);
+                const origins = (result.connectedOrigins as string[]) || [];
+                setConnectedDApps(origins);
+            } catch (e) {
+                console.log('Error loading connected dApps:', e);
+            }
         };
         load();
     }, []);
@@ -23,6 +33,27 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         await VaultManager.setLockTimeout(type, value);
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
+    };
+
+    const handleDisconnect = async (origin: string) => {
+        try {
+            const result = await chrome.storage.local.get(['connectedOrigins']);
+            const origins = (result.connectedOrigins as string[]) || [];
+            const filtered = origins.filter(o => o !== origin);
+            await chrome.storage.local.set({ connectedOrigins: filtered });
+            setConnectedDApps(filtered);
+        } catch (e) {
+            console.error('Error disconnecting dApp:', e);
+        }
+    };
+
+    const extractDomain = (origin: string): string => {
+        try {
+            const url = new URL(origin);
+            return url.hostname;
+        } catch {
+            return origin;
+        }
     };
 
     return (
@@ -82,6 +113,56 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                         <div className="text-[10px] text-[var(--text-dim)] font-mono">
                             Auto-lock after: <span className="text-foreground">{value} {type}(s)</span>
                         </div>
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="flex items-center gap-2 text-primary">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                        <h3 className="font-bold text-sm uppercase tracking-wider">Connected Applications</h3>
+                    </div>
+
+                    <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                        Manage applications that have permission to view your account address.
+                    </p>
+
+                    <div className="bg-surface rounded-xl border border-border overflow-hidden">
+                        {connectedDApps.length === 0 ? (
+                            <div className="p-4 text-center text-xs text-[var(--text-dim)]">
+                                No applications connected
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-border">
+                                {connectedDApps.map((origin) => (
+                                    <div key={origin} className="flex items-center justify-between p-3">
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <div className="w-8 h-8 rounded-full bg-surfaceHighlight flex items-center justify-center shrink-0">
+                                                <span className="text-xs font-bold text-primary">
+                                                    {extractDomain(origin).charAt(0).toUpperCase()}
+                                                </span>
+                                            </div>
+                                            <div className="truncate">
+                                                <div className="text-sm font-medium text-foreground truncate">
+                                                    {extractDomain(origin)}
+                                                </div>
+                                                <div className="text-[10px] text-[var(--text-muted)] truncate">
+                                                    {origin}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleDisconnect(origin)}
+                                            className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors ml-2"
+                                            title="Disconnect"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
 
