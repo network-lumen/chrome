@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Lumen Wallet",
+  "name": "Lumen Wallet Beta",
   "version": "1.0.1",
-  "description": "Non-custodial Lumen Chain wallet with Swap v1 support.",
+  "description": "[BETA] Non-custodial Lumen Chain wallet with Swap v1 support.",
   "action": {
     "default_popup": "index.html",
     "default_title": "Lumen Wallet"
@@ -40,11 +40,20 @@
     "48": "icons/logo.png",
     "128": "icons/logo.png"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["contentScript.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
   "web_accessible_resources": [
     {
       "resources": [
         "*.wasm",
-        "dilithium3.wasm"
+        "dilithium3.wasm",
+        "inject.js"
       ],
       "matches": [
         "<all_urls>"

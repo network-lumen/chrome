@@ -11,6 +11,7 @@ import { Governance } from './components/governance/Governance';
 import { VaultManager } from './modules/vault/vault';
 import { openExpandedView } from './utils/navigation';
 import { Send } from './components/send/Send';
+import { ApprovalModal } from './components/ApprovalModal';
 import type { LumenWallet } from './modules/sdk/key-manager';
 
 function App() {
@@ -27,6 +28,7 @@ function App() {
   const [isLocked, setIsLocked] = useState(false);
   const [hasVault, setHasVault] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const isLockedRef = useRef(isLocked);
 
@@ -63,6 +65,24 @@ function App() {
   /* Initial Load & Session Check */
   useEffect(() => {
     const checkSession = async () => {
+      // Check for pending approval - but only show modal AFTER wallet is unlocked
+      try {
+        const result = await chrome.storage.local.get('pendingApprovalRequest');
+        if (result.pendingApprovalRequest) {
+          console.log('[App] Found pending approval request');
+          // Check if wallet is unlocked before showing modal
+          const expired = await VaultManager.isSessionExpired();
+          if (!expired) {
+            console.log('[App] Wallet unlocked, showing approval modal');
+            setShowApprovalModal(true);
+          } else {
+            console.log('[App] Wallet locked, will show modal after unlock');
+          }
+        }
+      } catch (e) {
+        console.log('[App] Error checking pending approval:', e);
+      }
+
       const exists = await VaultManager.hasWallet();
       setHasVault(exists);
       if (exists) {
@@ -80,6 +100,7 @@ function App() {
               setActiveWalletIndex(foundIdx);
             }
 
+            // No pending approval, proceed to dashboard
             if (location.pathname === '/' || location.pathname === '/onboarding') {
               navigate('/dashboard');
             }
@@ -122,7 +143,9 @@ function App() {
       }
     }, 5000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+    };
   }, []);
 
   const handleUnlock = async (password: string) => {
@@ -140,7 +163,16 @@ function App() {
 
       setIsLocked(false);
       setUnlockError(null);
-      navigate('/dashboard');
+
+      // Check for pending approval request AFTER unlock
+      const result = await chrome.storage.local.get('pendingApprovalRequest');
+      if (result.pendingApprovalRequest) {
+        console.log('[App] Found pending approval after unlock, showing modal');
+        setShowApprovalModal(true);
+        navigate('/dashboard'); // Go to dashboard with modal overlay
+      } else {
+        navigate('/dashboard');
+      }
     } catch (e: any) {
       setUnlockError(e?.message || "Incorrect password.");
     }
@@ -382,6 +414,15 @@ function App() {
             <span className="text-[10px] font-semibold">Bridge</span>
           </button>
         </footer>
+      )}
+
+      {/* Approval Modal Overlay */}
+      {showApprovalModal && (
+        <ApprovalModal
+          onClose={() => {
+            setShowApprovalModal(false);
+          }}
+        />
       )}
     </div>
   );
