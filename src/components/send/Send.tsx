@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useSendTransaction } from '../../hooks/useSendTransaction';
 import type { LumenWallet } from '../../modules/sdk/key-manager';
+import { NetworkManager } from '../../modules/sdk/network';
 import { BookUser } from 'lucide-react';
 import { ContactsModal } from '../contacts/ContactsModal';
 import { HistoryManager } from '../../modules/history/history';
@@ -29,8 +30,8 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
         const fetchBalance = async () => {
             try {
                 setIsBalanceLoading(true);
-                const API_URL = "https://api-lumen.winnode.xyz";
-                const res = await fetch(`${API_URL}/cosmos/bank/v1beta1/balances/${activeKeys.address}`);
+                const endpoint = NetworkManager.getInstance().getQuickRestEndpoint();
+                const res = await fetch(`${endpoint}/cosmos/bank/v1beta1/balances/${activeKeys.address}`);
                 if (!res.ok) throw new Error("Failed to fetch balance");
                 const data = await res.json();
                 const ulmn = data.balances?.find((b: any) => b.denom === 'ulmn');
@@ -218,40 +219,42 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
 
             {/* Confirmation Modal */}
             {showConfirm && (
-                <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-fade-in">
-                    <div className="bg-surface border border-border rounded-2xl w-full max-w-sm p-6 animate-slide-up space-y-6">
-                        <h3 className="text-lg font-bold text-foreground">Confirm Transfer</h3>
-
-                        <div className="space-y-4">
-                            <div className="bg-surfaceHighlight p-4 rounded-xl border border-border space-y-1">
-                                <p className="text-[10px] text-[var(--text-muted)] uppercase font-bold">Sending</p>
-                                <p className="text-xl font-bold text-foreground">{amount} LMN</p>
+                <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-surface/90 border border-border/50 rounded-[32px] w-full max-w-[340px] p-6 animate-zoom-in space-y-6 shadow-2xl shadow-black/40">
+                        <div className="flex flex-col items-center text-center space-y-2">
+                            <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mb-2">
+                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
                             </div>
-
-                            <div className="space-y-1">
-                                <p className="text-[10px] text-[var(--text-muted)] uppercase font-bold">To</p>
-                                <p className="text-xs font-mono text-foreground break-all bg-surfaceHighlight p-2 rounded-lg border border-border">{recipient}</p>
-                            </div>
-
-                            {memo && (
-                                <div className="space-y-1">
-                                    <p className="text-[10px] text-[var(--text-muted)] uppercase font-bold">Memo</p>
-                                    <p className="text-xs text-foreground bg-surfaceHighlight p-2 rounded-lg border border-border">{memo}</p>
-                                </div>
-                            )}
+                            <h3 className="text-xl font-bold text-foreground">Confirm Transfer</h3>
+                            <p className="text-xs text-[var(--text-muted)]">Please review the details below</p>
                         </div>
 
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setShowConfirm(false)}
-                                className="flex-1 py-3 rounded-xl font-bold text-foreground bg-surfaceHighlight hover:bg-border transition-colors text-sm"
-                            >
-                                Cancel
-                            </button>
+                        <div className="space-y-3">
+                            <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10 space-y-1 text-center">
+                                <p className="text-[10px] text-primary/60 uppercase font-black tracking-widest">Amount to Send</p>
+                                <p className="text-3xl font-black text-primary">{amount} <span className="text-sm font-bold opacity-70">LMN</span></p>
+                            </div>
+
+                            <div className="bg-surfaceHighlight/50 p-4 rounded-2xl border border-border/30 space-y-3">
+                                <div className="space-y-1.5 text-center">
+                                    <p className="text-[10px] text-[var(--text-muted)] uppercase font-bold tracking-wider">Recipient Address</p>
+                                    <p className="text-[11px] font-mono text-foreground break-all leading-tight px-2">{recipient}</p>
+                                </div>
+
+                                {memo && (
+                                    <div className="pt-3 border-t border-border/10 space-y-1 text-center">
+                                        <p className="text-[10px] text-[var(--text-muted)] uppercase font-bold tracking-wider">Memo</p>
+                                        <p className="text-xs text-foreground italic">"{memo}"</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
                             <button
                                 onClick={handleConfirm}
                                 disabled={isLoading}
-                                className="flex-1 py-3 rounded-xl font-bold text-white bg-primary hover:bg-primary-hover transition-colors text-sm flex items-center justify-center gap-2"
+                                className="w-full py-4 rounded-2xl font-bold text-white bg-primary hover:bg-primary-hover active:scale-[0.98] transition-all text-sm flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
                             >
                                 {isLoading ? (
                                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -261,6 +264,12 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                                         Sign & Send
                                     </>
                                 )}
+                            </button>
+                            <button
+                                onClick={() => setShowConfirm(false)}
+                                className="w-full py-3.5 rounded-2xl font-bold text-[var(--text-muted)] hover:text-foreground hover:bg-surfaceHighlight transition-all text-sm bg-transparent"
+                            >
+                                Cancel
                             </button>
                         </div>
                     </div>

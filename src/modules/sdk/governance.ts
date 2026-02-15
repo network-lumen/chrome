@@ -9,6 +9,8 @@ import { Any } from 'cosmjs-types/google/protobuf/any';
 import * as LumenSDK from '@lumen-chain/sdk';
 import type { LumenWallet } from './key-manager';
 
+import { NetworkManager } from './network';
+
 const CHAIN_ID = "lumen";
 const GAS_LIMIT = BigInt(200000);
 
@@ -51,8 +53,9 @@ const ensureUint8Array = (input: string | Uint8Array | undefined): Uint8Array =>
 };
 
 /* Helper: Account Info */
-async function fetchAccountInfo(address: string, apiEndpoint: string) {
-    const res = await fetch(`${apiEndpoint}/cosmos/auth/v1beta1/accounts/${address}`);
+async function fetchAccountInfo(address: string, apiEndpoint?: string) {
+    const endpoint = apiEndpoint || await NetworkManager.getInstance().getRestEndpoint();
+    const res = await fetch(`${endpoint}/cosmos/auth/v1beta1/accounts/${address}`);
     if (!res.ok) {
         throw new Error(`Account fetch failed: ${res.status} ${res.statusText}`);
     }
@@ -79,7 +82,7 @@ export async function voteOnProposal(
     walletData: LumenWallet,
     proposalId: string,
     voteOption: 'yes' | 'no' | 'abstain' | 'veto',
-    apiEndpoint: string
+    apiEndpoint?: string
 ): Promise<string> {
 
     /* 1. Prepare ECDSA Wallet */
@@ -90,6 +93,9 @@ export async function voteOnProposal(
     if (account.address !== walletData.address) {
         throw new Error(`Mnemonic derived address ${account.address} does not match wallet address ${walletData.address}`);
     }
+
+    /* Sync RPCs */
+    await NetworkManager.getInstance().sync();
 
     const { accountNumber, sequence } = await fetchAccountInfo(walletData.address, apiEndpoint);
 
@@ -205,7 +211,8 @@ export async function voteOnProposal(
 }
 
 /* Broadcaster */
-async function broadcastTx(txBytes: Uint8Array, restUrl: string): Promise<string> {
+async function broadcastTx(txBytes: Uint8Array, restUrl?: string): Promise<string> {
+    const endpoint = restUrl || await NetworkManager.getInstance().getRestEndpoint();
     const txBytesBase64 = Buffer.from(txBytes).toString('base64');
 
     const body = {
@@ -213,7 +220,7 @@ async function broadcastTx(txBytes: Uint8Array, restUrl: string): Promise<string
         mode: 'BROADCAST_MODE_SYNC'
     };
 
-    const res = await fetch(`${restUrl}/cosmos/tx/v1beta1/txs`, {
+    const res = await fetch(`${endpoint}/cosmos/tx/v1beta1/txs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)

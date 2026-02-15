@@ -13,8 +13,8 @@
 const STORAGE_KEY_HISTORY = 'lumen_history_v1';
 const HISTORY_LIMIT = 100;
 
-const RPC_BASE = "https://rpc-lumen.winnode.xyz";
-const API_BASE = "https://api-lumen.winnode.xyz";
+const RPC_BASE = "https://rpc.cosmos.directory/lumen";
+const API_BASE = "https://rest.cosmos.directory/lumen";
 
 export interface Transaction {
     hash: string;
@@ -112,7 +112,6 @@ export class HistoryManager {
      */
     static async syncGap(address: string) {
         try {
-            console.log(`[GapSync] Starting fast sync for ${address}...`);
 
             // Query: transfer.recipient = 'address'
             // We request per_page=50, page=1, order=desc (newest first)
@@ -125,11 +124,9 @@ export class HistoryManager {
 
             const txs = pData.result?.txs || [];
             if (txs.length === 0) {
-                console.log("[GapSync] No recent history found via RPC search.");
                 return;
             }
 
-            console.log(`[GapSync] Found ${txs.length} transactions via RPC Search.`);
 
             // Dynamic Import for Crypto Libs (Optimization)
             const { fromBase64, toHex } = await import('@cosmjs/encoding');
@@ -219,7 +216,6 @@ export class HistoryManager {
      * Forces a Deep Rescan (last 100 blocks) to capture the credit immediately.
      */
     static async onBalanceIncrease(address: string) {
-        console.log(`[HistoryManager] Balance increased! Forcing deep rescan...`);
         await this.syncBlocks(address, 100, true); // Force=true ignores watermark
     }
 
@@ -244,7 +240,9 @@ export class HistoryManager {
                     const latestData = await latestRes.json();
                     latestHeight = parseInt(latestData.block.header.height);
                 }
-            } catch (e) { console.warn("API Height fetch failed", e); }
+            } catch (e) {
+                /* API failed */
+            }
 
             if (latestHeight === 0) {
                 // Fallback to RPC for Height
@@ -271,7 +269,6 @@ export class HistoryManager {
             if (!force && startHeight >= latestHeight) return;
 
             const endHeight = Math.min(startHeight + depth, latestHeight);
-            console.log(`[HybridScanner] Syncing ${startHeight + 1} to ${endHeight} (Force: ${force}, Head: ${latestHeight})`);
 
             // 3. Scan Loop
             const heights = [];
@@ -328,7 +325,6 @@ export class HistoryManager {
                 // STRATEGY B: REST Raw Block (Fallback)
                 if (!successRPC) {
                     try {
-                        console.log(`[HybridScanner] Falling back to Raw REST for block ${height}`);
                         const blockRes = await fetch(`${API_BASE}/cosmos/base/tendermint/v1beta1/blocks/${height}`);
                         if (blockRes.ok) {
                             const blockJson = await blockRes.json();
@@ -431,7 +427,6 @@ export class HistoryManager {
     }
 
     private static async saveFoundTx(address: string, height: string, time: string, source: string, events: any[], txBytes?: string, index?: number) {
-        console.log(`[HybridScanner] Match found: ${source} at ${height}`);
 
         // 1. Compute Hash
         let hash = "";
@@ -441,7 +436,7 @@ export class HistoryManager {
                 const { sha256 } = await import('@cosmjs/crypto');
                 const hashBytes = sha256(fromBase64(txBytes));
                 hash = toHex(hashBytes).toUpperCase();
-            } catch (e) { console.warn("Hash calc failed", e); }
+            } catch { }
         }
 
         // Fallback: Use Synthetic ID for System Events or missing bytes
