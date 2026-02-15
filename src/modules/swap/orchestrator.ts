@@ -48,14 +48,14 @@ export const SwapOrchestrator = {
         const memo = quote.deposit.memo;
 
         // Sign
-        const txBytes = await buildAndSignSendTx(
+        const { txBytes, endpoint } = await buildAndSignSendTx(
             wallet,
             quote.deposit.address,
             amountUlmn,
             memo
         );
 
-        // Broadcast
-        return await broadcastTx(txBytes);
+        // Broadcast using the same endpoint
+        return await broadcastTx(txBytes, endpoint);
     }
 };

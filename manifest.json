@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Lumen Wallet Beta",
+  "name": "Lumen Wallet",
   "version": "1.0.1",
-  "description": "[BETA] Non-custodial Lumen Chain wallet with Swap v1 support.",
+  "description": "Non-custodial Lumen Chain wallet with Swap v1 support.",
   "action": {
     "default_popup": "index.html",
     "default_title": "Lumen Wallet"
@@ -12,12 +12,18 @@
     "sidePanel",
     "contextMenus"
   ],
-  "host_permissions": [
-    "http://142.132.201.187:1317/*",
-    "http://142.132.201.187:26657/*",
-    "http://142.132.201.187:9190/*",
+  "optional_host_permissions": [
+    "https://*/*",
     "http://*/*",
-    "https://*/*"
+    "https://rpc.lumen.chaintools.tech/*",
+    "https://lumen.blocksync.me/*",
+    "https://lumen-mainnet-rpc.mekonglabs.com/*",
+    "https://rpc-lumen.onenov.xyz/*",
+    "https://lumen-api.node9x.com/*",
+    "https://api.lumen.chaintools.tech/*",
+    "https://lumen-mainnet-api.mekonglabs.com/*",
+    "https://lumen-api.linknode.org/*",
+    "https://api-lumen.winnode.xyz/*"
   ],
   "side_panel": {
     "default_path": "index.html"

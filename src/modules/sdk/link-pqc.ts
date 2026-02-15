@@ -370,7 +370,6 @@ export async function checkPqcAccountStatus(
 
         return { isLinked: false };
     } catch (err) {
-        /* console.warn('[LINK] Could not check PQC account status:', err); */
         /* Assume not linked if we can't check */
         return { isLinked: false };
     }

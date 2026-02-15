@@ -9,9 +9,11 @@ import { Any } from 'cosmjs-types/google/protobuf/any';
 import * as LumenSDK from '@lumen-chain/sdk';
 import type { LumenWallet } from './key-manager';
 
+import { NetworkManager } from './network';
+
 const CHAIN_ID = "lumen";
 const GAS_LIMIT = BigInt(300000);
-const API_ENDPOINT = 'https://api-lumen.winnode.xyz';
+// API_ENDPOINT replaced by NetworkManager
 
 /* Helper: Hex/Base64 Decoder */
 const ensureUint8Array = (input: string | Uint8Array | undefined): Uint8Array => {
@@ -46,7 +48,8 @@ const ensureUint8Array = (input: string | Uint8Array | undefined): Uint8Array =>
 
 /* Helper: Account Info */
 async function fetchAccountInfo(address: string) {
-    const res = await fetch(`${API_ENDPOINT}/cosmos/auth/v1beta1/accounts/${address}`);
+    const endpoint = await NetworkManager.getInstance().getRestEndpoint();
+    const res = await fetch(`${endpoint}/cosmos/auth/v1beta1/accounts/${address}`);
     if (!res.ok) {
         throw new Error(`Account fetch failed: ${res.status} ${res.statusText}`);
     }
@@ -61,7 +64,8 @@ async function fetchAccountInfo(address: string) {
 /* Fetch Delegations */
 export async function fetchDelegations(delegatorAddress: string) {
     try {
-        const res = await fetch(`${API_ENDPOINT}/cosmos/staking/v1beta1/delegations/${delegatorAddress}`);
+        const endpoint = await NetworkManager.getInstance().getRestEndpoint();
+        const res = await fetch(`${endpoint}/cosmos/staking/v1beta1/delegations/${delegatorAddress}`);
         if (!res.ok) {
             if (res.status === 404) return [];
             throw new Error(`Failed to fetch delegations: ${res.status}`);
@@ -77,7 +81,8 @@ export async function fetchDelegations(delegatorAddress: string) {
 /* Fetch Unbonding Delegations */
 export async function fetchUnbondingDelegations(delegatorAddress: string) {
     try {
-        const res = await fetch(`${API_ENDPOINT}/cosmos/staking/v1beta1/delegators/${delegatorAddress}/unbonding_delegations`);
+        const endpoint = await NetworkManager.getInstance().getRestEndpoint();
+        const res = await fetch(`${endpoint}/cosmos/staking/v1beta1/delegators/${delegatorAddress}/unbonding_delegations`);
         if (!res.ok) {
             if (res.status === 404) return [];
             throw new Error(`Failed to fetch unbonding delegations: ${res.status}`);
@@ -93,7 +98,8 @@ export async function fetchUnbondingDelegations(delegatorAddress: string) {
 /* Fetch Rewards */
 export async function fetchRewards(delegatorAddress: string) {
     try {
-        const res = await fetch(`${API_ENDPOINT}/cosmos/distribution/v1beta1/delegators/${delegatorAddress}/rewards`);
+        const endpoint = await NetworkManager.getInstance().getRestEndpoint();
+        const res = await fetch(`${endpoint}/cosmos/distribution/v1beta1/delegators/${delegatorAddress}/rewards`);
         if (!res.ok) {
             if (res.status === 404) return { total: [], rewards: [] };
             throw new Error(`Failed to fetch rewards: ${res.status}`);
@@ -112,7 +118,8 @@ export async function fetchRewards(delegatorAddress: string) {
 /* Fetch Validators */
 export async function fetchValidators() {
     try {
-        const res = await fetch(`${API_ENDPOINT}/cosmos/staking/v1beta1/validators?status=BOND_STATUS_BONDED`);
+        const endpoint = await NetworkManager.getInstance().getRestEndpoint();
+        const res = await fetch(`${endpoint}/cosmos/staking/v1beta1/validators?status=BOND_STATUS_BONDED`);
         if (!res.ok) {
             throw new Error(`Failed to fetch validators: ${res.status}`);
         }
@@ -127,7 +134,8 @@ export async function fetchValidators() {
 /* Fetch Validator Info */
 export async function fetchValidator(validatorAddress: string) {
     try {
-        const res = await fetch(`${API_ENDPOINT}/cosmos/staking/v1beta1/validators/${validatorAddress}`);
+        const endpoint = await NetworkManager.getInstance().getRestEndpoint();
+        const res = await fetch(`${endpoint}/cosmos/staking/v1beta1/validators/${validatorAddress}`);
         if (!res.ok) {
             throw new Error(`Failed to fetch validator: ${res.status}`);
         }
@@ -151,6 +159,9 @@ export async function delegateTokens(
     if (account.address !== walletData.address) {
         throw new Error(`Address mismatch`);
     }
+
+    /* Sync RPCs */
+    await NetworkManager.getInstance().sync();
 
     const { accountNumber, sequence } = await fetchAccountInfo(walletData.address);
 
@@ -270,6 +281,9 @@ export async function undelegateTokens(
         throw new Error(`Address mismatch`);
     }
 
+    /* Sync RPCs */
+    await NetworkManager.getInstance().sync();
+
     const { accountNumber, sequence } = await fetchAccountInfo(walletData.address);
 
     /* Prepare PQC Keys */
@@ -387,6 +401,9 @@ export async function claimRewards(
         throw new Error(`Address mismatch`);
     }
 
+    /* Sync RPCs */
+    await NetworkManager.getInstance().sync();
+
     const { accountNumber, sequence } = await fetchAccountInfo(walletData.address);
 
     /* Prepare PQC Keys */
@@ -500,7 +517,8 @@ async function broadcastTx(txBytes: Uint8Array): Promise<string> {
         mode: 'BROADCAST_MODE_SYNC'
     };
 
-    const res = await fetch(`${API_ENDPOINT}/cosmos/tx/v1beta1/txs`, {
+    const endpoint = await NetworkManager.getInstance().getRestEndpoint();
+    const res = await fetch(`${endpoint}/cosmos/tx/v1beta1/txs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
