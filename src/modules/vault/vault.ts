@@ -5,6 +5,9 @@ import type { LumenWallet } from '../sdk/key-manager';
 const STORAGE_KEY_VAULT = 'lumen_vault_v1';
 const STORAGE_KEY_SESSION = 'lumen_session_v1';
 const STORAGE_KEY_SETTINGS = 'lumen_settings_v1';
+const IDB_NAME = 'lumen_wallet_keys';
+const IDB_STORE = 'session_keys';
+const IDB_VAULT_KEY = 'vault_key';
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; /* 5 Minutes */
 
 const PBKDF2_ITERATIONS = 310_000;
@@ -43,6 +46,9 @@ const hasChromeStorageLocal = () =>
 const hasChromeStorageSession = () =>
     typeof chrome !== 'undefined' && !!chrome.storage?.session;
 
+const hasIndexedDb = () =>
+    typeof indexedDB !== 'undefined';
+
 const storageLocal = {
     get: async (key: string): Promise<any> => {
         if (hasChromeStorageLocal()) {
@@ -67,6 +73,68 @@ const storageLocal = {
             localStorage.removeItem(key);
         }
     }
+};
+
+const openKeyDb = (): Promise<IDBDatabase> => {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(IDB_NAME, 1);
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(IDB_STORE)) {
+                db.createObjectStore(IDB_STORE);
+            }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+};
+
+const idbPutKey = async (key: CryptoKey): Promise<void> => {
+    const db = await openKeyDb();
+    await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put(key, IDB_VAULT_KEY);
+        tx.oncomplete = () => {
+            db.close();
+            resolve();
+        };
+        tx.onerror = () => {
+            db.close();
+            reject(tx.error);
+        };
+    });
+};
+
+const idbGetKey = async (): Promise<CryptoKey | null> => {
+    const db = await openKeyDb();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readonly');
+        const req = tx.objectStore(IDB_STORE).get(IDB_VAULT_KEY);
+        req.onsuccess = () => {
+            db.close();
+            resolve((req.result as CryptoKey) || null);
+        };
+        req.onerror = () => {
+            db.close();
+            reject(req.error);
+        };
+    });
+};
+
+const idbDeleteKey = async (): Promise<void> => {
+    const db = await openKeyDb();
+    await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).delete(IDB_VAULT_KEY);
+        tx.oncomplete = () => {
+            db.close();
+            resolve();
+        };
+        tx.onerror = () => {
+            db.close();
+            reject(tx.error);
+        };
+    });
 };
 
 const storageSession = {
@@ -137,14 +205,40 @@ const deriveAesKeyFromPassword = async (password: string, salt: Uint8Array, iter
         },
         baseKey,
         { name: 'AES-GCM', length: 256 },
-        false,
+        false, // Non-extractable for production safety
         ['encrypt', 'decrypt']
     );
 };
 
 let cachedVaultKey: CryptoKey | null = null;
+const STORAGE_KEY_SESSION_KEY = 'lumen_session_key_jwk';
 
 export class VaultManager {
+    /**
+     * Persist the key to session storage (memory only, safe for SW)
+     */
+    private static async persistSessionKey(key: CryptoKey) {
+        if (!hasIndexedDb()) return;
+        try {
+            await idbPutKey(key);
+        } catch (e) {
+            console.error('Failed to persist session key:', e);
+        }
+    }
+
+    /**
+     * Restore key from session storage
+     */
+    private static async restoreSessionKey(): Promise<CryptoKey | null> {
+        if (!hasIndexedDb()) return null;
+        try {
+            return await idbGetKey();
+        } catch (e) {
+            console.error('Failed to restore session key:', e);
+            return null;
+        }
+    }
+
     /**
      * Encrypts and stores the wallet data in the vault.
      * Also refreshes the session.
@@ -153,7 +247,9 @@ export class VaultManager {
      */
     static async lock(wallets: LumenWallet[], password?: string): Promise<void> {
         if (!cachedVaultKey && !password) {
-            throw new Error('Wallet is locked.');
+            // Try to restore first
+            cachedVaultKey = await this.restoreSessionKey();
+            if (!cachedVaultKey) throw new Error('Wallet is locked.');
         }
 
         const cryptoImpl = getCrypto();
@@ -177,6 +273,7 @@ export class VaultManager {
             iterations = PBKDF2_ITERATIONS;
             key = await deriveAesKeyFromPassword(password!, salt, iterations);
             cachedVaultKey = key;
+            await this.persistSessionKey(key);
         }
 
         const plaintext = new TextEncoder().encode(JSON.stringify(wallets));
@@ -240,6 +337,7 @@ export class VaultManager {
             const wallets = Array.isArray(parsed) ? parsed as LumenWallet[] : [parsed as LumenWallet];
 
             cachedVaultKey = key;
+            await this.persistSessionKey(key);
             await this.touchSession();
             return wallets;
         } catch (e) {
@@ -251,6 +349,11 @@ export class VaultManager {
      * Returns the decrypted wallets using the in-memory session key.
      */
     static async getWallets(): Promise<LumenWallet[]> {
+        if (!cachedVaultKey) {
+            // Try to restore
+            cachedVaultKey = await this.restoreSessionKey();
+        }
+
         if (!cachedVaultKey) {
             throw new Error('Session expired.');
         }
@@ -345,6 +448,14 @@ export class VaultManager {
     static async clearSession() {
         cachedVaultKey = null;
         await storageSession.remove(STORAGE_KEY_SESSION);
+        await storageSession.remove(STORAGE_KEY_SESSION_KEY);
+        if (hasIndexedDb()) {
+            try {
+                await idbDeleteKey();
+            } catch (e) {
+                console.error('Failed to clear session key:', e);
+            }
+        }
     }
 
     /**

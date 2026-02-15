@@ -8,7 +8,6 @@ export const promises = {
                     ? chrome.runtime.getURL('dilithium3.wasm')
                     : '/dilithium3.wasm';
 
-                console.log(`[MockFS] Intercepting read for ${path}, fetching from ${url}`);
 
                 const response = await fetch(url);
                 if (!response.ok) throw new Error(`HTTP error ${response.status}`);

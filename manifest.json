@@ -12,12 +12,18 @@
     "sidePanel",
     "contextMenus"
   ],
-  "host_permissions": [
-    "http://142.132.201.187:1317/*",
-    "http://142.132.201.187:26657/*",
-    "http://142.132.201.187:9190/*",
+  "optional_host_permissions": [
+    "https://*/*",
     "http://*/*",
-    "https://*/*"
+    "https://rpc.lumen.chaintools.tech/*",
+    "https://lumen.blocksync.me/*",
+    "https://lumen-mainnet-rpc.mekonglabs.com/*",
+    "https://rpc-lumen.onenov.xyz/*",
+    "https://lumen-api.node9x.com/*",
+    "https://api.lumen.chaintools.tech/*",
+    "https://lumen-mainnet-api.mekonglabs.com/*",
+    "https://lumen-api.linknode.org/*",
+    "https://api-lumen.winnode.xyz/*"
   ],
   "side_panel": {
     "default_path": "index.html"
@@ -40,11 +46,20 @@
     "48": "icons/logo.png",
     "128": "icons/logo.png"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["contentScript.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
   "web_accessible_resources": [
     {
       "resources": [
         "*.wasm",
-        "dilithium3.wasm"
+        "dilithium3.wasm",
+        "inject.js"
       ],
       "matches": [
         "<all_urls>"

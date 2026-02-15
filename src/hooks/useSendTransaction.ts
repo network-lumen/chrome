@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { buildAndSignSendTx, broadcastTx } from '../modules/sdk/tx';
+import { NetworkManager } from '../modules/sdk/network';
 import type { LumenWallet } from '../modules/sdk/key-manager';
 
 interface SendState {
@@ -24,6 +25,11 @@ export const useSendTransaction = () => {
         setState({ isLoading: true, error: null, successHash: null });
 
         try {
+            // 0. Sync and resolve best endpoint once
+            const nm = NetworkManager.getInstance();
+            await nm.sync();
+            const preferredEndpoint = await nm.getRestEndpoint();
+
             // Give UI time to render the loading state/spinner before heavy blocking crypto
             await new Promise(r => setTimeout(r, 100));
             // 1. Validation
@@ -36,17 +42,13 @@ export const useSendTransaction = () => {
             }
 
             // 2. Conversion (LMN -> ulmn)
-            // Using BigInt/string math to avoid float precision issues is better, but for MVP float * 1m is ok
-            // strictly speaking, we should use a library like 'decimal.js' or careful string parsing.
-            // For now: 
             const amountUlmn = Math.round(amount * 1_000_000).toString();
 
-            // 3. Build & Sign (Dual Sign)
-            // Updated signature matches new tx.ts
-            const txBytes = await buildAndSignSendTx(fromWallet, toAddress, amountUlmn, memo);
+            // 3. Build & Sign (Dual Sign) - use the preferred endpoint
+            const { txBytes, endpoint } = await buildAndSignSendTx(fromWallet, toAddress, amountUlmn, memo, preferredEndpoint);
 
-            // 4. Broadcast
-            const txHash = await broadcastTx(txBytes);
+            // 4. Broadcast - use the SAME endpoint used for signing
+            const txHash = await broadcastTx(txBytes, endpoint);
 
             setState({
                 isLoading: false,

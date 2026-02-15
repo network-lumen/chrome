@@ -8,6 +8,7 @@ import { MnemonicVerify } from './onboarding/MnemonicVerify';
 import { ImportWalletAdvanced } from './onboarding/ImportWalletAdvanced';
 import { VaultManager } from '../modules/vault/vault';
 import { ActionBar } from './dashboard/ActionBar';
+import { NetworkManager } from '../modules/sdk/network';
 import { ReceiveModal } from './dashboard/ReceiveModal';
 import { LinkPQCBanner } from './dashboard/LinkPQCBanner';
 import { HistoryModal } from './history/HistoryModal';
@@ -58,9 +59,8 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
 
         const fetchBalance = async () => {
             try {
-                /* TODO: Move API config to a central place */
-                const API_URL = "https://api-lumen.winnode.xyz";
-                const res = await fetch(`${API_URL}/cosmos/bank/v1beta1/balances/${activeKeys.address}`);
+                const endpoint = NetworkManager.getInstance().getQuickRestEndpoint();
+                const res = await fetch(`${endpoint}/cosmos/bank/v1beta1/balances/${activeKeys.address}`);
 
                 if (!res.ok) throw new Error("Failed to fetch balance");
 
@@ -79,7 +79,6 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                     lastBalanceRef.current = newBalRaw;
                 }
             } catch (e) {
-                console.warn("Balance fetch failed (transient):", e);
                 /* Keep previous/default balance on error or show indicator */
             }
         };

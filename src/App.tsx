@@ -9,8 +9,10 @@ import { BackupModal } from './components/dashboard/BackupModal';
 import { Staking } from './components/staking/Staking';
 import { Governance } from './components/governance/Governance';
 import { VaultManager } from './modules/vault/vault';
+import { REQUIRED_HOST_PERMISSIONS } from './permissions';
 import { openExpandedView } from './utils/navigation';
 import { Send } from './components/send/Send';
+import { ApprovalModal } from './components/ApprovalModal';
 import type { LumenWallet } from './modules/sdk/key-manager';
 
 function App() {
@@ -27,8 +29,14 @@ function App() {
   const [isLocked, setIsLocked] = useState(false);
   const [hasVault, setHasVault] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const isLockedRef = useRef(isLocked);
+  const [needsNetworkPermission, setNeedsNetworkPermission] = useState(false);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const permissionCheckedRef = useRef(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const STORAGE_PENDING_QUEUE = 'pendingApprovalQueue';
 
   useEffect(() => {
     isLockedRef.current = isLocked;
@@ -53,16 +61,66 @@ function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
+  const checkNetworkPermissions = async () => {
+    if (!chrome?.permissions) return;
+    try {
+      const granted = await chrome.permissions.contains({ origins: REQUIRED_HOST_PERMISSIONS });
+      setNeedsNetworkPermission(!granted);
+    } catch {
+      setNeedsNetworkPermission(true);
+    }
+  };
+
+  const requestNetworkPermissions = async () => {
+    if (!chrome?.permissions) return;
+    setPermissionError(null);
+    try {
+      const granted = await chrome.permissions.request({ origins: REQUIRED_HOST_PERMISSIONS });
+      if (!granted) {
+        setPermissionError('Network access denied. Some features may not work.');
+      }
+      setNeedsNetworkPermission(!granted);
+    } catch (e: any) {
+      setPermissionError(e?.message || 'Failed to request network permissions.');
+      setNeedsNetworkPermission(true);
+    }
+  };
+
   /* Persist active wallet */
   useEffect(() => {
     if (wallets.length > 0 && wallets[activeWalletIndex]) {
-      localStorage.setItem('lastActiveWalletAddress', wallets[activeWalletIndex].address);
+      const activeAddress = wallets[activeWalletIndex].address;
+      localStorage.setItem('lastActiveWalletAddress', activeAddress);
+      chrome.runtime.sendMessage({ type: 'sync-active-wallet', address: activeAddress }).catch(() => {
+      });
     }
   }, [activeWalletIndex, wallets]);
+
+  const loadPendingQueue = async () => {
+    const result = await chrome.storage.local.get(STORAGE_PENDING_QUEUE) as { pendingApprovalQueue?: any[] };
+    const queue = Array.isArray(result.pendingApprovalQueue) ? result.pendingApprovalQueue : [];
+    setPendingCount(queue.length);
+    return queue;
+  };
 
   /* Initial Load & Session Check */
   useEffect(() => {
     const checkSession = async () => {
+      // Check for pending approval - but only show modal AFTER wallet is unlocked
+      try {
+        const queue = await loadPendingQueue();
+        if (queue.length > 0) {
+          const expired = await VaultManager.isSessionExpired();
+          if (!expired) {
+            setShowApprovalModal(true);
+          } else {
+          }
+        } else {
+          setShowApprovalModal(false);
+        }
+      } catch (e) {
+      }
+
       const exists = await VaultManager.hasWallet();
       setHasVault(exists);
       if (exists) {
@@ -80,8 +138,13 @@ function App() {
               setActiveWalletIndex(foundIdx);
             }
 
+            // No pending approval, proceed to dashboard
             if (location.pathname === '/' || location.pathname === '/onboarding') {
               navigate('/dashboard');
+            }
+            if (!permissionCheckedRef.current) {
+              permissionCheckedRef.current = true;
+              await checkNetworkPermissions();
             }
           } else {
             setIsLocked(true);
@@ -112,6 +175,25 @@ function App() {
     };
     checkSession();
 
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return;
+      if (!changes.pendingApprovalQueue) return;
+      const nextValue = changes.pendingApprovalQueue.newValue;
+      const queue = Array.isArray(nextValue) ? nextValue : [];
+      setPendingCount(queue.length);
+      if (queue.length > 0 && !isLockedRef.current) {
+        setShowApprovalModal(true);
+        if (location.pathname !== '/dashboard') {
+          navigate('/dashboard');
+        }
+      }
+      if (queue.length === 0) {
+        setShowApprovalModal(false);
+      }
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+
     const interval = setInterval(async () => {
       const exists = await VaultManager.hasWallet();
       setHasVault(exists);
@@ -122,11 +204,18 @@ function App() {
       }
     }, 5000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+    };
   }, []);
 
   const handleUnlock = async (password: string) => {
     try {
+      // Sync session to background
+      chrome.runtime.sendMessage({ type: 'sync-session', password }).catch(() => {
+      });
+
       const unlockedWallets = await VaultManager.unlock(password);
       setWallets(unlockedWallets);
       setHasVault(true);
@@ -140,7 +229,20 @@ function App() {
 
       setIsLocked(false);
       setUnlockError(null);
-      navigate('/dashboard');
+
+      if (!permissionCheckedRef.current) {
+        permissionCheckedRef.current = true;
+        await checkNetworkPermissions();
+      }
+
+      // Check for pending approval request AFTER unlock
+      const queue = await loadPendingQueue();
+      if (queue.length > 0) {
+        setShowApprovalModal(true);
+        navigate('/dashboard'); // Go to dashboard with modal overlay
+      } else {
+        navigate('/dashboard');
+      }
     } catch (e: any) {
       setUnlockError(e?.message || "Incorrect password.");
     }
@@ -303,6 +405,35 @@ function App() {
       )}
 
       <main className="flex-1 overflow-y-auto relative">
+        {!isLocked && activeWallet && needsNetworkPermission && (
+          <div className="mx-4 mt-4 rounded-2xl border border-border bg-surfaceHighlight/80 p-3 text-xs text-[var(--text-muted)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold text-foreground">Network access required</div>
+                <div>Allow access to Lumen RPC/REST endpoints for balance and transactions.</div>
+                {permissionError && (
+                  <div className="mt-1 text-xs text-red-400">{permissionError}</div>
+                )}
+              </div>
+              <button
+                onClick={requestNetworkPermissions}
+                className="px-3 py-2 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-primary-hover"
+              >
+                Allow
+              </button>
+            </div>
+          </div>
+        )}
+        {!isLocked && pendingCount > 0 && (
+          <div className="mx-4 mt-3 rounded-2xl border border-border bg-surfaceHighlight/80 p-3 text-xs text-[var(--text-muted)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold text-foreground">Pending requests</div>
+                <div>{pendingCount} waiting for your approval.</div>
+              </div>
+            </div>
+          </div>
+        )}
         <Routes>
           <Route path="/" element={
             isLocked
@@ -382,6 +513,15 @@ function App() {
             <span className="text-[10px] font-semibold">Bridge</span>
           </button>
         </footer>
+      )}
+
+      {/* Approval Modal Overlay */}
+      {(showApprovalModal || (!isLocked && pendingCount > 0)) && (
+        <ApprovalModal
+          onClose={() => {
+            setShowApprovalModal(false);
+          }}
+        />
       )}
     </div>
   );
