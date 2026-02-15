@@ -30,7 +30,6 @@
 
   // Prevent double injection
   if (window.lumen) {
-    console.warn('[Lumen] Provider already injected');
     return;
   }
 
@@ -40,6 +39,79 @@
   // Request tracking: Maps request IDs to their Promise resolve/reject functions
   const pendingRequests = new Map();
   let requestIdCounter = 0;
+  const REQUEST_TIMEOUT_MS = 60 * 1000;
+
+  const normalizePubKey = (pubKey) => {
+    if (!pubKey) return new Uint8Array();
+    if (pubKey instanceof Uint8Array) return pubKey;
+    if (Array.isArray(pubKey)) return new Uint8Array(pubKey);
+    if (typeof pubKey === 'object') {
+      const values = Object.values(pubKey).filter((v) => typeof v === 'number');
+      return new Uint8Array(values);
+    }
+    return new Uint8Array();
+  };
+
+  const bytesToBase64 = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    let bytes = value;
+    if (Array.isArray(value)) {
+      bytes = new Uint8Array(value);
+    } else if (typeof value === 'object' && !(value instanceof Uint8Array)) {
+      const values = Object.values(value).filter((v) => typeof v === 'number');
+      bytes = new Uint8Array(values);
+    }
+    if (!(bytes instanceof Uint8Array)) return '';
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 1) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  };
+
+  const base64ToBytes = (value) => {
+    if (!value) return new Uint8Array();
+    if (value instanceof Uint8Array) return value;
+    if (Array.isArray(value)) return new Uint8Array(value);
+    if (typeof value === 'object') {
+      const values = Object.values(value).filter((v) => typeof v === 'number');
+      return new Uint8Array(values);
+    }
+    if (typeof value !== 'string') return new Uint8Array();
+    try {
+      const binary = atob(value);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    } catch {
+      return new Uint8Array();
+    }
+  };
+
+  const normalizeSignDoc = (signDoc) => {
+    if (!signDoc || typeof signDoc !== 'object') return signDoc;
+    return {
+      ...signDoc,
+      accountNumber: signDoc.accountNumber?.toString?.() ?? signDoc.accountNumber,
+      bodyBytes: bytesToBase64(signDoc.bodyBytes),
+      authInfoBytes: bytesToBase64(signDoc.authInfoBytes),
+    };
+  };
+
+  const normalizeSignResponse = (response) => {
+    if (!response || !response.signed) return response;
+    return {
+      ...response,
+      signed: {
+        ...response.signed,
+        bodyBytes: base64ToBytes(response.signed.bodyBytes),
+        authInfoBytes: base64ToBytes(response.signed.authInfoBytes),
+      }
+    };
+  };
 
   /**
    * Listen for responses from Content Script (Isolated World)
@@ -54,7 +126,6 @@
     // Verify message is for Lumen and has valid UUID
     if (message.target !== 'lumen-provider') return;
     if (message.uuid !== LUMEN_UUID) {
-      console.warn('[Lumen] Invalid UUID in response, rejecting');
       return;
     }
 
@@ -111,7 +182,7 @@
           pendingRequests.delete(requestId);
           reject(new Error('Request timeout'));
         }
-      }, 30000);
+      }, REQUEST_TIMEOUT_MS);
     });
   }
 
@@ -120,6 +191,7 @@
    * Main interface that dApps use to interact with the wallet
    */
   const lumenProvider = {
+    version: '1.0.1',
     /**
      * EIP-1193 Standard Method
      * @param {Object} args - Request arguments with method and params
@@ -168,11 +240,48 @@
     isConnected: () => true,
 
     /**
+     * Keplr-style provider methods (Cosmos dApps)
+     */
+    enable: async (chainId) => {
+      return sendRequest('enable', { chainId });
+    },
+
+    getKey: async (chainId) => {
+      return sendRequest('getKey', { chainId });
+    },
+
+    getOfflineSigner: (chainId) => {
+      return {
+        getAccounts: async () => {
+          const key = await sendRequest('getKey', { chainId });
+          const keyData = key?.data ?? key ?? {};
+          return [{
+            address: keyData.bech32Address,
+            algo: keyData.algo,
+            pubkey: normalizePubKey(keyData.pubKey),
+          }];
+        },
+        signDirect: async (signerAddress, signDoc) => {
+          const response = await sendRequest('signDirect', { signerAddress, signDoc: normalizeSignDoc(signDoc) });
+          return normalizeSignResponse(response);
+        },
+        signAmino: async (signerAddress, signDoc) => {
+          return sendRequest('signAmino', { signerAddress, signDoc });
+        }
+      };
+    },
+
+    getOfflineSignerAuto: async (chainId) => {
+      return lumenProvider.getOfflineSigner(chainId);
+    },
+
+    experimentalSuggestChain: async (chainInfo) => {
+      return sendRequest('experimentalSuggestChain', { chainInfo });
+    },
+
+    /**
      * Legacy support methods (some dApps may use these)
      */
-    enable: async () => {
-      return lumenProvider.request({ method: 'eth_requestAccounts' });
-    },
 
     send: (methodOrPayload, paramsOrCallback) => {
       // Support both legacy send formats
@@ -211,6 +320,6 @@
 
   // Dispatch initialization event
   window.dispatchEvent(new Event('lumen#initialized'));
+  window.dispatchEvent(new Event('lumen_keystone_ready'));
 
-  console.log('[Lumen] Provider injected successfully');
 })();

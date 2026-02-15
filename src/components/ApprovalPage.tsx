@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { VaultManager } from '../modules/vault/vault';
+import { originToPattern } from '../permissions';
 
 interface ApprovalRequest {
     requestId: string;
@@ -11,21 +12,22 @@ interface ApprovalRequest {
 
 export function ApprovalPage() {
     const navigate = useNavigate();
-    const [pendingRequest, setPendingRequest] = useState<ApprovalRequest | null>(null);
+    const [pendingQueue, setPendingQueue] = useState<ApprovalRequest[]>([]);
     const [walletAddress, setWalletAddress] = useState<string>('');
     const [balance, setBalance] = useState<string>('0.00');
     const [loading, setLoading] = useState(true);
+    const [permissionError, setPermissionError] = useState<string | null>(null);
+    const STORAGE_ACTIVE_WALLET = 'activeWalletAddress';
 
     useEffect(() => {
         // Check for pending approval request in storage
         const checkPendingRequest = async () => {
             try {
-                const result = await chrome.storage.local.get('pendingApprovalRequest');
-                if (result.pendingApprovalRequest) {
-                    console.log('[ApprovalPage] Found pending request:', result.pendingApprovalRequest);
-                    setPendingRequest(result.pendingApprovalRequest as ApprovalRequest);
+                const result = await chrome.storage.local.get('pendingApprovalQueue');
+                const queue = Array.isArray(result.pendingApprovalQueue) ? result.pendingApprovalQueue : [];
+                if (queue.length > 0) {
+                    setPendingQueue(queue as ApprovalRequest[]);
                 } else {
-                    console.log('[ApprovalPage] No pending request found');
                 }
             } catch (error) {
                 console.error('[ApprovalPage] Error checking pending request:', error);
@@ -50,7 +52,6 @@ export function ApprovalPage() {
             const expired = await VaultManager.isSessionExpired();
             if (expired) {
                 // Wallet is locked, don't try to load wallet info
-                console.log('[ApprovalPage] Wallet is locked, waiting for unlock');
                 setLoading(false);
                 return;
             }
@@ -58,7 +59,9 @@ export function ApprovalPage() {
             // Wallet is unlocked, safe to load
             const wallets = await VaultManager.getWallets();
             if (wallets && wallets.length > 0) {
-                const activeWallet = wallets[0];
+                const result = await chrome.storage.local.get(STORAGE_ACTIVE_WALLET) as { activeWalletAddress?: string };
+                const activeWallet =
+                    wallets.find(w => w.address === result.activeWalletAddress) || wallets[0];
                 setWalletAddress(activeWallet.address);
 
                 // TODO: Fetch balance from chain
@@ -72,8 +75,25 @@ export function ApprovalPage() {
         }
     };
 
-    const handleApprove = () => {
+    const pendingRequest = pendingQueue[0] || null;
+
+    const handleApprove = async () => {
         if (!pendingRequest) return;
+
+        setPermissionError(null);
+        if (pendingRequest.type === 'approval-request' && chrome.permissions) {
+            const pattern = originToPattern(pendingRequest.origin);
+            if (pattern) {
+                const granted = await chrome.permissions.contains({ origins: [pattern] });
+                if (!granted) {
+                    const ok = await chrome.permissions.request({ origins: [pattern] });
+                    if (!ok) {
+                        setPermissionError('Site permission denied.');
+                        return;
+                    }
+                }
+            }
+        }
 
         chrome.runtime.sendMessage({
             type: 'user-response',
@@ -158,11 +178,16 @@ export function ApprovalPage() {
 
             {/* Content */}
             <main className="flex-1 overflow-y-auto p-6 space-y-6">
+                {permissionError && (
+                    <div className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                        {permissionError}
+                    </div>
+                )}
                 {/* Permissions */}
                 <div className="glass-card p-4 rounded-xl">
                     <h3 className="text-sm font-semibold text-foreground mb-3">This site will be able to:</h3>
                     <ul className="space-y-2">
-                        {pendingRequest.permissions.map((permission, index) => (
+                        {(pendingRequest.permissions ?? []).map((permission, index) => (
                             <li key={index} className="flex items-start gap-2 text-sm text-gray-400">
                                 <svg className="w-5 h-5 text-green-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

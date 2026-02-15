@@ -35,7 +35,6 @@
   }
 
   const LUMEN_UUID = generateUUID();
-  console.log('[Lumen Content Script] UUID generated:', LUMEN_UUID);
 
   /**
    * STEP 1: Inject the Provider Script into the Main World
@@ -57,7 +56,6 @@
       // Clean up - remove the script tag after it loads
       script.onload = () => {
         script.remove();
-        console.log('[Lumen Content Script] Provider script injected into Main World');
       };
       
       script.onerror = (error) => {
@@ -86,29 +84,79 @@
 
     // SECURITY: Validate UUID to prevent spoofing
     if (message.uuid !== LUMEN_UUID) {
-      console.warn('[Lumen Content Script] Invalid UUID, rejecting message:', message);
       return;
     }
 
     // Only process request type messages
     if (message.type !== 'request') return;
 
-    console.log('[Lumen Content Script] Received request from Main World:', message);
 
     try {
+      const usePort = [
+        'enable',
+        'eth_requestAccounts',
+        'eth_sendTransaction',
+        'personal_sign',
+        'eth_sign',
+        'eth_signTypedData',
+        'eth_signTypedData_v3',
+        'eth_signTypedData_v4',
+        'signDirect',
+        'signAmino'
+      ].includes(message.method);
+
+      const requestPayload = {
+        type: 'lumen-provider-request',
+        method: message.method,
+        params: message.params,
+        origin: window.location.origin,
+        requestId: message.requestId
+      };
+
+      const sendViaPort = () => {
+        return new Promise((resolve, reject) => {
+          const port = chrome.runtime.connect({ name: 'lumen-provider' });
+          let settled = false;
+          const timeout = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            try { port.disconnect(); } catch {}
+            reject(new Error('Request timeout'));
+          }, 60 * 1000);
+
+          const cleanup = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            try { port.disconnect(); } catch {}
+          };
+
+          port.onMessage.addListener((response) => {
+            if (response?.requestId !== message.requestId) return;
+            cleanup();
+            resolve(response);
+          });
+
+          port.onDisconnect.addListener(() => {
+            if (settled) return;
+            const err = chrome.runtime.lastError?.message || 'Port disconnected';
+            cleanup();
+            reject(new Error(err));
+          });
+
+          port.postMessage(requestPayload);
+        });
+      };
+
       /**
        * STEP 3: Forward to Background Service Worker
        * 
        * Use chrome.runtime.sendMessage to send the request to background.js
        * This is where the actual wallet logic lives (signing, account management, etc.)
        */
-      const response = await chrome.runtime.sendMessage({
-        type: 'lumen-provider-request',
-        method: message.method,
-        params: message.params,
-        origin: window.location.origin,
-        requestId: message.requestId
-      });
+      const response = usePort
+        ? await sendViaPort()
+        : await chrome.runtime.sendMessage(requestPayload);
 
       /**
        * STEP 4: Send response back to Main World
@@ -125,7 +173,6 @@
         error: response.error
       }, '*');
 
-      console.log('[Lumen Content Script] Response sent to Main World:', response);
 
     } catch (error) {
       // Handle errors and send error response back to provider
@@ -178,5 +225,11 @@
   // Initialize: Inject the provider script
   injectProviderScript();
 
-  console.log('[Lumen Content Script] Initialized on:', window.location.href);
+  // Pre-warm background service worker
+  try {
+    chrome.runtime.sendMessage({ type: 'lumen-ping' }).catch(() => {});
+  } catch (e) {
+    // ignore
+  }
+
 })();

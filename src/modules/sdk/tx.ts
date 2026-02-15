@@ -11,9 +11,12 @@ import * as LumenSDK from '@lumen-chain/sdk';
 import type { LumenWallet } from './key-manager';
 
 /* Config */
+import { NetworkManager } from './network';
+
+/* Config */
 const CHAIN_ID = "lumen";
 const GAS_LIMIT = BigInt(200000);
-const DEFAULT_REST = "https://api-lumen.winnode.xyz";
+// DEFAULT_REST replaced by NetworkManager
 
 /* Helper: Hex/Base64 Decoder */
 const ensureUint8Array = (input: string | Uint8Array | undefined): Uint8Array => {
@@ -54,8 +57,9 @@ const ensureUint8Array = (input: string | Uint8Array | undefined): Uint8Array =>
 };
 
 /* Helper: Account Info */
-async function fetchAccountInfo(address: string, apiEndpoint: string = DEFAULT_REST) {
-    const res = await fetch(`${apiEndpoint}/cosmos/auth/v1beta1/accounts/${address}`);
+async function fetchAccountInfo(address: string, apiEndpoint?: string) {
+    const endpoint = apiEndpoint || await NetworkManager.getInstance().getRestEndpoint();
+    const res = await fetch(`${endpoint}/cosmos/auth/v1beta1/accounts/${address}`);
     if (!res.ok) {
         throw new Error(`Account fetch failed: ${res.status} ${res.statusText}`);
     }
@@ -73,8 +77,8 @@ export async function buildAndSignSendTx(
     toAddress: string,
     amountUlmn: string,
     memo: string,
-    apiEndpoint: string = DEFAULT_REST
-): Promise<Uint8Array> {
+    apiEndpoint?: string
+): Promise<{ txBytes: Uint8Array; endpoint: string }> {
 
     /* 1. Prepare ECDSA Wallet */
     const wallet = await DirectSecp256k1HdWallet.fromMnemonic(walletData.mnemonic, { prefix: 'lmn' });
@@ -85,7 +89,9 @@ export async function buildAndSignSendTx(
         throw new Error(`Mnemonic derived address ${account.address} does not match wallet address ${walletData.address}`);
     }
 
-    const { accountNumber, sequence } = await fetchAccountInfo(walletData.address, apiEndpoint);
+    /* Sync RPCs before getting account info */
+    const endpointUsed = apiEndpoint || await NetworkManager.getInstance().getRestEndpoint();
+    const { accountNumber, sequence } = await fetchAccountInfo(walletData.address, endpointUsed);
 
     /* 2. Prepare Keys (Decoded) */
     /* Support both new 'pqcKey' and legacy 'pqc' structures. */
@@ -224,11 +230,15 @@ export async function buildAndSignSendTx(
         signatures: [Buffer.from(finalSig.signature, 'base64')]
     });
 
-    return TxRaw.encode(txRaw).finish();
+    return {
+        txBytes: TxRaw.encode(txRaw).finish(),
+        endpoint: endpointUsed
+    };
 }
 
 /* 3. Broadcaster */
-export async function broadcastTx(txBytes: Uint8Array, restUrl: string = DEFAULT_REST): Promise<string> {
+export async function broadcastTx(txBytes: Uint8Array, restUrl?: string): Promise<string> {
+    const endpoint = restUrl || await NetworkManager.getInstance().getRestEndpoint();
     const txBytesBase64 = Buffer.from(txBytes).toString('base64');
 
     const body = {
@@ -236,7 +246,7 @@ export async function broadcastTx(txBytes: Uint8Array, restUrl: string = DEFAULT
         mode: 'BROADCAST_MODE_SYNC'
     };
 
-    const res = await fetch(`${restUrl}/cosmos/tx/v1beta1/txs`, {
+    const res = await fetch(`${endpoint}/cosmos/tx/v1beta1/txs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
