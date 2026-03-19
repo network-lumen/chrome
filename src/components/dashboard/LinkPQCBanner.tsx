@@ -14,9 +14,26 @@ interface LinkPQCBannerProps {
     wallet?: LumenWallet | null;
     onWalletUpdate?: (wallet: LumenWallet) => void;
     isModal?: boolean;
+    onClose?: () => void;
 }
 
-export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUpdate, isModal }) => {
+const findPqcData = (wallet?: LumenWallet | null) => {
+    if (!wallet) return null;
+
+    if ((wallet.pqcKey as any)?.privateKey || (wallet.pqcKey as any)?.private_key) return wallet.pqcKey;
+    if ((wallet as any).pqc?.privateKey || (wallet as any).pqc?.private_key) return (wallet as any).pqc;
+
+    for (const key of Object.keys(wallet)) {
+        const val = (wallet as any)[key];
+        if (val && typeof val === 'object' && (val as any).scheme === 'dilithium3' && ((val as any).privateKey || (val as any).private_key)) {
+            return val;
+        }
+    }
+
+    return wallet.pqcKey || (wallet as any).pqc || null;
+};
+
+export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUpdate, isModal, onClose }) => {
     /* Determine initial state: if wallet exists and says linked, hide immediately */
     const [linkState, setLinkState] = useState<LinkState>(
         (!isModal && (!wallet || wallet.linked || wallet.linkTxHash)) ? 'hidden' : 'checking'
@@ -25,6 +42,7 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
     const [progress, setProgress] = useState<number>(0);
     const [requirements, setRequirements] = useState({ minBalance: '1000', powBits: 21 });
     const [isActionStarting, setIsActionStarting] = useState(false);
+    const [backupMessage, setBackupMessage] = useState<string>('');
 
     /* Transaction Verification State */
     const [txHash, setTxHash] = useState<string | null>(null);
@@ -37,6 +55,7 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
         /* This ensures the banner doesn't flash if the new wallet is already linked or doesn't need linking. */
         setLinkState((!isModal && (!wallet || wallet.linked || wallet.linkTxHash)) ? 'hidden' : 'checking');
         setError('');
+        setBackupMessage('');
     }, [wallet?.address, wallet?.linked, wallet?.linkTxHash, isModal]); /* Depend on linked/linkTxHash as well for immediate re-evaluation */
 
     /* Check if linking is needed */
@@ -226,6 +245,31 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
         }
     };
 
+    const handleDownloadPqcBackup = () => {
+        if (!wallet) return;
+
+        const pqcSource = findPqcData(wallet);
+        const rawPriv = (pqcSource as any)?.privateKey || (pqcSource as any)?.private_key || (pqcSource as any)?.encryptedPrivateKey;
+        const rawPub = (pqcSource as any)?.publicKey || (pqcSource as any)?.public_key;
+
+        if (!pqcSource || !rawPriv || !rawPub) {
+            setBackupMessage('PQC backup data not found in this wallet.');
+            return;
+        }
+
+        const data = JSON.stringify({ pqcKey: pqcSource }, null, 2);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `lumen_pqc_${wallet.address.substring(0, 8)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        setBackupMessage('PQC backup downloaded.');
+    };
+
     if (linkState === 'hidden') return null;
 
     return (
@@ -308,11 +352,35 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
                     </p>
 
                     {txHash && (
-                        <div className="bg-white/50 dark:bg-black/20 p-2 rounded text-xs font-mono mb-2 break-all">
-                            <span className="font-bold block text-[10px] text-green-700 dark:text-green-300 uppercase opacity-70">Transaction Hash</span>
-                            {txHash}
+                        <div className="mb-3 rounded-lg border border-green-200 bg-white text-green-950 dark:border-green-800 dark:bg-slate-950/60 dark:text-green-100">
+                            <div className="border-b border-green-200/80 px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-green-700 dark:border-green-800/80 dark:text-green-300">
+                                Transaction Hash
+                            </div>
+                            <div className="px-3 py-2 text-xs font-mono break-all">
+                                {txHash}
+                            </div>
                         </div>
                     )}
+
+                    <div className="mb-3 rounded-lg border border-green-200 bg-green-50/80 p-3 dark:border-green-800 dark:bg-green-950/20">
+                        <p className="text-xs font-semibold text-green-900 dark:text-green-100">
+                            Export your post-quantum backup now
+                        </p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-green-800 dark:text-green-200">
+                            This downloads your PQC signer data in the same JSON format used by wallet import. Keep it with your mnemonic to restore dual-signer access later.
+                        </p>
+                        <button
+                            onClick={handleDownloadPqcBackup}
+                            className="mt-3 w-full rounded-lg border border-green-300 bg-white px-3 py-2 text-xs font-bold text-green-800 transition-colors hover:bg-green-100 dark:border-green-700 dark:bg-slate-950/50 dark:text-green-100 dark:hover:bg-green-900/30"
+                        >
+                            Download PQC Backup JSON
+                        </button>
+                        {backupMessage && (
+                            <p className="mt-2 text-[10px] font-semibold text-green-700 dark:text-green-300">
+                                {backupMessage}
+                            </p>
+                        )}
+                    </div>
 
                     <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-2 text-xs font-medium">
@@ -345,7 +413,13 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
                     </div>
 
                     <button
-                        onClick={() => setLinkState('hidden')}
+                        onClick={() => {
+                            if (isModal && onClose) {
+                                onClose();
+                                return;
+                            }
+                            setLinkState('hidden');
+                        }}
                         className="mt-3 w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold transition-colors"
                     >
                         Done

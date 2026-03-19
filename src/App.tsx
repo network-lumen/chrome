@@ -6,6 +6,7 @@ import { Unlock } from './components/onboarding/Unlock';
 import { WalletMenu } from './components/WalletMenu';
 import { Settings } from './components/Settings';
 import { BackupModal } from './components/dashboard/BackupModal';
+import { LinkPQCBanner } from './components/dashboard/LinkPQCBanner';
 import { Staking } from './components/staking/Staking';
 import { Governance } from './components/governance/Governance';
 import { VaultManager } from './modules/vault/vault';
@@ -14,6 +15,9 @@ import { openExpandedView } from './utils/navigation';
 import { Send } from './components/send/Send';
 import { ApprovalModal } from './components/ApprovalModal';
 import type { LumenWallet } from './modules/sdk/key-manager';
+
+const chromeApi = globalThis.chrome;
+const hasExtensionRuntime = !!chromeApi?.runtime?.id;
 
 function App() {
   const navigate = useNavigate();
@@ -62,9 +66,9 @@ function App() {
   };
 
   const checkNetworkPermissions = async () => {
-    if (!chrome?.permissions) return;
+    if (!chromeApi?.permissions) return;
     try {
-      const granted = await chrome.permissions.contains({ origins: REQUIRED_HOST_PERMISSIONS });
+      const granted = await chromeApi.permissions.contains({ origins: REQUIRED_HOST_PERMISSIONS });
       setNeedsNetworkPermission(!granted);
     } catch {
       setNeedsNetworkPermission(true);
@@ -72,10 +76,10 @@ function App() {
   };
 
   const requestNetworkPermissions = async () => {
-    if (!chrome?.permissions) return;
+    if (!chromeApi?.permissions) return;
     setPermissionError(null);
     try {
-      const granted = await chrome.permissions.request({ origins: REQUIRED_HOST_PERMISSIONS });
+      const granted = await chromeApi.permissions.request({ origins: REQUIRED_HOST_PERMISSIONS });
       if (!granted) {
         setPermissionError('Network access denied. Some features may not work.');
       }
@@ -91,13 +95,20 @@ function App() {
     if (wallets.length > 0 && wallets[activeWalletIndex]) {
       const activeAddress = wallets[activeWalletIndex].address;
       localStorage.setItem('lastActiveWalletAddress', activeAddress);
-      chrome.runtime.sendMessage({ type: 'sync-active-wallet', address: activeAddress }).catch(() => {
-      });
+      if (hasExtensionRuntime && chromeApi?.runtime?.sendMessage) {
+        chromeApi.runtime.sendMessage({ type: 'sync-active-wallet', address: activeAddress }).catch(() => {
+        });
+      }
     }
   }, [activeWalletIndex, wallets]);
 
   const loadPendingQueue = async () => {
-    const result = await chrome.storage.local.get(STORAGE_PENDING_QUEUE) as { pendingApprovalQueue?: any[] };
+    if (!chromeApi?.storage?.local) {
+      setPendingCount(0);
+      return [];
+    }
+
+    const result = await chromeApi.storage.local.get(STORAGE_PENDING_QUEUE) as { pendingApprovalQueue?: any[] };
     const queue = Array.isArray(result.pendingApprovalQueue) ? result.pendingApprovalQueue : [];
     setPendingCount(queue.length);
     return queue;
@@ -192,7 +203,10 @@ function App() {
       }
     };
 
-    chrome.storage.onChanged.addListener(handleStorageChange);
+    const storageOnChanged = chromeApi?.storage?.onChanged;
+    if (storageOnChanged) {
+      storageOnChanged.addListener(handleStorageChange);
+    }
 
     const interval = setInterval(async () => {
       const exists = await VaultManager.hasWallet();
@@ -206,15 +220,19 @@ function App() {
 
     return () => {
       clearInterval(interval);
-      chrome.storage.onChanged.removeListener(handleStorageChange);
+      if (storageOnChanged) {
+        storageOnChanged.removeListener(handleStorageChange);
+      }
     };
   }, []);
 
   const handleUnlock = async (password: string) => {
     try {
       // Sync session to background
-      chrome.runtime.sendMessage({ type: 'sync-session', password }).catch(() => {
-      });
+      if (hasExtensionRuntime && chromeApi?.runtime?.sendMessage) {
+        chromeApi.runtime.sendMessage({ type: 'sync-session', password }).catch(() => {
+        });
+      }
 
       const unlockedWallets = await VaultManager.unlock(password);
       setWallets(unlockedWallets);
@@ -317,6 +335,20 @@ function App() {
     }
   };
 
+  const handleWalletUpdate = async (updated: LumenWallet) => {
+    try {
+      const existing = await VaultManager.getWallets();
+      const index = existing.findIndex(w => w.address === updated.address);
+      if (index === -1) return;
+
+      existing[index] = { ...existing[index], ...updated };
+      await VaultManager.saveWallets(existing);
+      setWallets(existing);
+    } catch (e) {
+      console.error("Failed to update wallet in vault:", e);
+    }
+  };
+
   const handleInteraction = async () => {
     if (activeWallet && !isLocked) {
       await VaultManager.touchSession();
@@ -404,6 +436,23 @@ function App() {
         />
       )}
 
+      {!isLocked && activeWallet && isLinkModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm bg-surface border border-border rounded-xl relative">
+            <button
+              onClick={() => setIsLinkModalOpen(false)}
+              className="absolute top-2 right-2 p-1 text-[var(--text-muted)] hover:text-foreground rounded-full hover:bg-white/5 transition-colors z-10"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+
+            <div className="p-4 pt-8">
+              <LinkPQCBanner wallet={activeWallet} onWalletUpdate={handleWalletUpdate} isModal={true} onClose={() => setIsLinkModalOpen(false)} />
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="flex-1 overflow-y-auto relative">
         {!isLocked && activeWallet && needsNetworkPermission && (
           <div className="mx-4 mt-4 rounded-2xl border border-border bg-surfaceHighlight/80 p-3 text-xs text-[var(--text-muted)]">
@@ -447,7 +496,7 @@ function App() {
                 activeKeys={activeWallet}
                 isAdding={wallets.length > 0 || hasVault}
                 onCancel={() => { }}
-                showLinkModal={isLinkModalOpen}
+                showLinkModal={false}
                 onCloseLinkModal={() => setIsLinkModalOpen(false)}
               />
             ) : <Navigate to="/" />

@@ -24,6 +24,8 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
     const [balance, setBalance] = useState<number>(0);
     const [isBalanceLoading, setIsBalanceLoading] = useState(false);
     const [localError, setLocalError] = useState<string | null>(null);
+    const displayedError = error || localError;
+    const showLinkPqcHint = !!displayedError && /account not linked on chain yet|not linked on chain|missing pqc key|pqc signature required/i.test(displayedError);
 
     // Fetch Balance
     React.useEffect(() => {
@@ -200,9 +202,14 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                     />
                 </div>
 
-                {(error || localError) && (
+                {displayedError && (
                     <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
-                        <p className="text-red-500 text-xs">{error || localError}</p>
+                        <p className="text-red-500 text-xs">{displayedError}</p>
+                        {showLinkPqcHint && (
+                            <p className="mt-2 text-[11px] text-red-300 leading-relaxed">
+                                Hint: open wallet settings and tap <span className="font-semibold text-red-200">Link PQC Account</span> to register your post-quantum-resistant keys on-chain, then retry.
+                            </p>
+                        )}
                     </div>
                 )}
 
