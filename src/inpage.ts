@@ -103,7 +103,7 @@
     });
 
     const lumen = {
-        version: '1.0.1',
+        version: '1.0.2',
         enable: async (chainId: string) => {
             return await sendRequest('enable', { chainId });
         },
