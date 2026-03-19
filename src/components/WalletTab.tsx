@@ -182,6 +182,44 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
         }
     };
 
+    const importPreparedWallet = async (buildWallet: () => Promise<LumenWallet>) => {
+        try {
+            setIsImporting(true);
+            setError(null);
+
+            if (isAdding) {
+                try {
+                    await VaultManager.getWallets();
+                } catch (e: any) {
+                    setError("Session expired or vault locked. Please unlock and try again.");
+                    return;
+                }
+            }
+
+            const keys = await buildWallet();
+            setTempWallet(keys);
+
+            if (isAdding) {
+                const existing = await VaultManager.getWallets();
+                if (existing.some(w => w.address === keys.address)) {
+                    setError("Wallet already exists in your vault.");
+                    return;
+                }
+
+                const newWallets = [...existing, keys];
+                await VaultManager.saveWallets(newWallets);
+                onWalletReady();
+                return;
+            }
+
+            setView('set-password');
+        } catch (e: any) {
+            setError(e.message || 'Import failed');
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
     /* --- VIEWS --- */
 
     /* 1. Authenticated Dashboard (Balance) - PRIORITY */
@@ -373,44 +411,8 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
     if (view === 'import') {
         return (
             <ImportWalletAdvanced
-                onImport={async (mnemonic, pqcKey) => {
-                    try {
-                        setIsImporting(true);
-                        setError(null);
-
-                        // If adding, ensure session is still valid
-                        if (isAdding) {
-                            try {
-                                await VaultManager.getWallets();
-                            } catch (e: any) {
-                                setError("Session expired or vault locked. Please unlock and try again.");
-                                setIsImporting(false);
-                                return;
-                            }
-                        }
-
-                        const keys = await KeyManager.importWallet(mnemonic, pqcKey);
-                        setTempWallet(keys);
-
-                        if (isAdding) {
-                            const existing = await VaultManager.getWallets();
-                            if (existing.some(w => w.address === keys.address)) {
-                                setError("Wallet already exists in your vault.");
-                                setIsImporting(false);
-                                return;
-                            }
-                            const newWallets = [...existing, keys];
-                            await VaultManager.saveWallets(newWallets);
-                            onWalletReady();
-                        } else {
-                            setView('set-password');
-                        }
-                    } catch (e: any) {
-                        setError(e.message || 'Import failed');
-                    } finally {
-                        setIsImporting(false);
-                    }
-                }}
+                onImport={(mnemonic, pqcKey) => importPreparedWallet(() => KeyManager.importWallet(mnemonic, pqcKey))}
+                onGenerateFreshPqc={(mnemonic) => importPreparedWallet(() => KeyManager.recoverFromMnemonic(mnemonic))}
                 onBack={() => setView(isAdding ? 'create-method' : 'welcome')}
                 isLoading={isImporting}
                 error={_error}

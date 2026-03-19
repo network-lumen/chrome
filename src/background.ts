@@ -26,7 +26,6 @@ const REQUIRED_HOST_PERMISSIONS = [
     'https://lumen-api.node9x.com/*',
     'https://api.lumen.chaintools.tech/*',
     'https://lumen-mainnet-api.mekonglabs.com/*',
-    'https://lumen-api.linknode.org/*',
     'https://api-lumen.winnode.xyz/*'
 ];
 

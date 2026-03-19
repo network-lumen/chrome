@@ -20,7 +20,6 @@ export const REST_PROVIDERS: Endpoint[] = [
     { address: "https://lumen-api.node9x.com", provider: "node9x" },
     { address: "https://api.lumen.chaintools.tech", provider: "ChainTools" },
     { address: "https://lumen-mainnet-api.mekonglabs.com", provider: "MekongLabs" },
-    { address: "https://lumen-api.linknode.org", provider: "AstroStake" },
     { address: "https://api-lumen.winnode.xyz", provider: "Winnode" },
 ];
 
@@ -56,6 +55,11 @@ export class NetworkManager {
                 if (!this.isAuto && this.manualProvider) {
                     const rpc = RPC_PROVIDERS.find(p => p.provider === this.manualProvider);
                     const rest = REST_PROVIDERS.find(p => p.provider === this.manualProvider);
+                    if (!rpc && !rest) {
+                        this.isAuto = true;
+                        this.manualProvider = null;
+                        return;
+                    }
                     if (rpc) this.currentRpc = rpc.address;
                     if (rest) this.currentRest = rest.address;
                 }
