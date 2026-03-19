@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lumen Wallet",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Non-custodial Lumen Chain wallet with Swap v1 support.",
   "action": {
     "default_popup": "index.html",
