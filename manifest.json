@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lumen Wallet",
-  "version": "1.0.2",
+  "version": "1.0.5",
   "description": "Non-custodial Lumen Chain wallet with Swap v1 support.",
   "action": {
     "default_popup": "index.html",
@@ -12,9 +12,7 @@
     "sidePanel",
     "contextMenus"
   ],
-  "optional_host_permissions": [
-    "https://*/*",
-    "http://*/*",
+  "host_permissions": [
     "https://rpc.lumen.chaintools.tech/*",
     "https://lumen.blocksync.me/*",
     "https://lumen-mainnet-rpc.mekonglabs.com/*",
@@ -27,12 +25,6 @@
   "side_panel": {
     "default_path": "index.html"
   },
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "lumen-wallet@yourdomain.com",
-      "strict_min_version": "109.0"
-    }
-  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
@@ -44,25 +36,5 @@
     "16": "icons/logo.png",
     "48": "icons/logo.png",
     "128": "icons/logo.png"
-  },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["contentScript.js"],
-      "run_at": "document_start",
-      "all_frames": true
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "*.wasm",
-        "dilithium3.wasm",
-        "inject.js"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ]
+  }
 }
