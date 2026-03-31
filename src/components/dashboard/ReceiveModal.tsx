@@ -6,9 +6,16 @@ import { X, Copy, Check } from 'lucide-react';
 interface ReceiveModalProps {
     address: string;
     onClose: () => void;
+    title?: string;
+    helperText?: string;
 }
 
-export const ReceiveModal: React.FC<ReceiveModalProps> = ({ address, onClose }) => {
+export const ReceiveModal: React.FC<ReceiveModalProps> = ({
+    address,
+    onClose,
+    title = 'Receive Assets',
+    helperText = 'Only send Lumen (LMN) assets to this address.'
+}) => {
     const [copied, setCopied] = React.useState(false);
 
     const handleCopy = () => {
@@ -28,7 +35,7 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({ address, onClose }) 
                 </button>
 
                 <div className="text-center space-y-6">
-                    <h3 className="text-lg font-bold text-foreground">Receive Assets</h3>
+                    <h3 className="text-lg font-bold text-foreground">{title}</h3>
 
                     <div className="bg-white p-4 rounded-xl inline-block mx-auto">
                         <QRCode
@@ -53,7 +60,7 @@ export const ReceiveModal: React.FC<ReceiveModalProps> = ({ address, onClose }) 
                     </div>
 
                     <p className="text-[10px] text-[var(--text-dim)]">
-                        Only send Lumen (LMN) assets to this address.
+                        {helperText}
                     </p>
                 </div>
             </div>

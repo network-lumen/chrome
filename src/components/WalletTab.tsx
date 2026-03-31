@@ -65,8 +65,10 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
 
     /* UI State */
     const [showReceive, setShowReceive] = useState(false);
+    const [receiveAssetContext, setReceiveAssetContext] = useState<CrossChainAssetRow | null>(null);
     const [showHistory, setShowHistory] = useState(false);
     const [copiedAddress, setCopiedAddress] = useState(false);
+    const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
     const [assetRows, setAssetRows] = useState<CrossChainAssetRow[]>([]);
     const [assetRowsLoading, setAssetRowsLoading] = useState(false);
     const [assetRowsError, setAssetRowsError] = useState<string | null>(null);
@@ -390,7 +392,10 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                 {/* Identity Info Hidden */}
 
                 <ActionBar
-                    onReceive={() => setShowReceive(true)}
+                    onReceive={() => {
+                        setReceiveAssetContext(null);
+                        setShowReceive(true);
+                    }}
                     onHistory={() => setShowHistory(true)}
                 />
 
@@ -434,10 +439,27 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                                             <button
                                                 onClick={() => {
                                                     navigator.clipboard.writeText(asset.ownerAddress);
+                                                    setCopiedAssetId(asset.id);
+                                                    setTimeout(() => {
+                                                        setCopiedAssetId((current) => current === asset.id ? null : current);
+                                                    }, 2000);
                                                 }}
-                                                className="shrink-0 text-[10px] font-bold text-primary hover:text-primary-hover transition-colors"
+                                                className={`shrink-0 p-2 rounded-lg transition-all active:scale-90 border border-border/50 ${copiedAssetId === asset.id
+                                                    ? 'bg-green-500 text-white shadow-lg shadow-green-500/20 border-green-500'
+                                                    : 'bg-surface text-foreground/40 hover:text-primary hover:shadow-lg'
+                                                    }`}
+                                                aria-label="Copy address"
+                                                title="Copy address"
                                             >
-                                                Copy
+                                                {copiedAssetId === asset.id ? (
+                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                ) : (
+                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                    </svg>
+                                                )}
                                             </button>
                                         </div>
                                     </div>
@@ -454,21 +476,22 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                                     </div>
                                 </div>
 
-                                {(asset.traceLabel || asset.routeLabel || asset.error) && (
+                                {!!asset.error && (
                                     <div className="space-y-1">
-                                        {asset.traceLabel && (
-                                            <p className="text-[11px] text-[var(--text-muted)]">{asset.traceLabel}</p>
-                                        )}
-                                        {asset.routeLabel && (
-                                            <p className="text-[11px] text-[var(--text-muted)]">{asset.routeLabel}</p>
-                                        )}
-                                        {asset.error && (
-                                            <p className="text-[11px] text-amber-300">{asset.error}</p>
-                                        )}
+                                        <p className="text-[11px] text-amber-300">{asset.error}</p>
                                     </div>
                                 )}
 
                                 <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={() => {
+                                            setReceiveAssetContext(asset);
+                                            setShowReceive(true);
+                                        }}
+                                        className="rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold text-foreground transition-colors hover:bg-surfaceHighlight"
+                                    >
+                                        Receive
+                                    </button>
                                     <button
                                         onClick={() => navigate('/send', {
                                             state: {
@@ -481,18 +504,6 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                                     >
                                         Send
                                     </button>
-                                    <button
-                                        onClick={() => navigate('/send', {
-                                            state: {
-                                                assetContext: asset,
-                                                initialMode: 'ibc'
-                                            }
-                                        })}
-                                        disabled={!asset.transferEnabled}
-                                        className="rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
-                                    >
-                                        To Other Chain
-                                    </button>
                                 </div>
                             </div>
                         ))}
@@ -501,8 +512,17 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
 
                 {showReceive && (
                     <ReceiveModal
-                        address={activeKeys.address}
-                        onClose={() => setShowReceive(false)}
+                        address={receiveAssetContext?.ownerAddress || activeKeys.address}
+                        title={receiveAssetContext ? `Receive On ${receiveAssetContext.chainLabel}` : 'Receive Assets'}
+                        helperText={
+                            receiveAssetContext
+                                ? `Only send ${receiveAssetContext.chainLabel} assets to this address.`
+                                : 'Only send Lumen (LMN) assets to this address.'
+                        }
+                        onClose={() => {
+                            setShowReceive(false);
+                            setReceiveAssetContext(null);
+                        }}
                     />
                 )}
 
