@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { KeyManager, type LumenWallet } from '../modules/sdk/key-manager';
 import { SetPassword } from './onboarding/SetPassword';
 import { Welcome } from './onboarding/Welcome';
@@ -13,6 +14,19 @@ import { ReceiveModal } from './dashboard/ReceiveModal';
 import { LinkPQCBanner } from './dashboard/LinkPQCBanner';
 import { HistoryModal } from './history/HistoryModal';
 import { HistoryManager } from '../modules/history/history';
+import {
+    getAssetOwnerLabel,
+    loadCrossChainAssets,
+    type CrossChainAssetRow
+} from '../modules/assets/crossChain';
+
+function shouldShowRawDenom(asset: CrossChainAssetRow): boolean {
+    const rawDenom = String(asset.denom || '').trim().toLowerCase();
+    if (!rawDenom) return false;
+    if (rawDenom.startsWith('ibc/')) return false;
+    if (rawDenom === 'ulmn' || rawDenom === 'ubze' || rawDenom === 'uusdc') return false;
+    return true;
+}
 
 interface WalletTabProps {
     onWalletReady: () => void;
@@ -24,6 +38,7 @@ interface WalletTabProps {
 }
 
 export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys, isAdding, onCancel, showLinkModal, onCloseLinkModal }) => {
+    const navigate = useNavigate();
     /* Flows: 'welcome' -> 'create-method' -> 'mnemonic-display' -> 'mnemonic-verify' -> 'set-password' -> DONE */
     /* Or: 'welcome' -> 'import' -> 'set-password' -> DONE */
     const [view, setView] = useState<'welcome' | 'create-method' | 'mnemonic-display' | 'mnemonic-verify' | 'import' | 'set-password'>(isAdding ? 'create-method' : 'welcome');
@@ -52,6 +67,10 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
     const [showReceive, setShowReceive] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
     const [copiedAddress, setCopiedAddress] = useState(false);
+    const [assetRows, setAssetRows] = useState<CrossChainAssetRow[]>([]);
+    const [assetRowsLoading, setAssetRowsLoading] = useState(false);
+    const [assetRowsError, setAssetRowsError] = useState<string | null>(null);
+    const assetRequestRef = React.useRef(0);
 
     /* Fetch Balance Effect */
     React.useEffect(() => {
@@ -102,6 +121,43 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
         sync();
 
     }, [activeKeys]);
+
+    const refreshAssets = React.useCallback(async (showSpinner: boolean = true) => {
+        if (!activeKeys) return;
+
+        const requestId = ++assetRequestRef.current;
+
+        try {
+            if (showSpinner) {
+                setAssetRowsLoading(true);
+            }
+
+            const result = await loadCrossChainAssets(activeKeys);
+            if (requestId !== assetRequestRef.current) return;
+
+            setAssetRows(result.rows);
+            setAssetRowsError(result.errors.length ? result.errors.join(' · ') : null);
+        } catch (e: any) {
+            if (requestId !== assetRequestRef.current) return;
+            setAssetRows([]);
+            setAssetRowsError(e?.message || 'Failed to load assets.');
+        } finally {
+            if (requestId === assetRequestRef.current) {
+                setAssetRowsLoading(false);
+            }
+        }
+    }, [activeKeys]);
+
+    React.useEffect(() => {
+        if (!activeKeys) return;
+
+        void refreshAssets(true);
+        const interval = setInterval(() => {
+            void refreshAssets(false);
+        }, 15000);
+
+        return () => clearInterval(interval);
+    }, [activeKeys, refreshAssets]);
 
     const handleAddToVault = async () => {
         if (!tempWallet) return;
@@ -225,7 +281,7 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
     /* 1. Authenticated Dashboard (Balance) - PRIORITY */
     if (activeKeys) {
         return (
-            <div className="space-y-6 animate-slide-up relative">
+            <div className="h-full overflow-y-auto space-y-6 animate-slide-up relative pb-24">
                 {/* PQC Link Modal */}
                 {showLinkModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
@@ -337,6 +393,111 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                     onReceive={() => setShowReceive(true)}
                     onHistory={() => setShowHistory(true)}
                 />
+
+                <section className="px-4 pb-2 space-y-3">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-sm font-bold text-foreground">Assets Across Chains</h3>
+                            <p className="text-[11px] text-[var(--text-muted)]">See what you hold on Lumen and linked IBC chains.</p>
+                        </div>
+                        <button
+                            onClick={() => void refreshAssets(true)}
+                            className="text-[10px] font-bold text-primary hover:text-primary-hover transition-colors"
+                        >
+                            {assetRowsLoading ? 'Refreshing...' : 'Refresh'}
+                        </button>
+                    </div>
+
+                    {assetRowsError && (
+                        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3">
+                            <p className="text-[11px] text-amber-300 leading-relaxed">{assetRowsError}</p>
+                        </div>
+                    )}
+
+                    <div className="space-y-3">
+                        {assetRows
+                            .filter((asset) => !(asset.isLocal && asset.denom === 'ulmn'))
+                            .map((asset) => (
+                            <div key={asset.id} className="rounded-2xl border border-border bg-surface p-4 space-y-3">
+                                <div className="space-y-2">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-sm font-semibold text-foreground">{asset.displayName}</p>
+                                            {asset.chainLabel.trim().toLowerCase() !== asset.displayName.trim().toLowerCase() && (
+                                                <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+                                                    {asset.chainLabel}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="mt-1 flex items-center justify-between gap-3">
+                                            <p className="text-[11px] text-[var(--text-muted)]">{getAssetOwnerLabel(asset)}</p>
+                                            <button
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(asset.ownerAddress);
+                                                }}
+                                                className="shrink-0 text-[10px] font-bold text-primary hover:text-primary-hover transition-colors"
+                                            >
+                                                Copy
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {shouldShowRawDenom(asset) && (
+                                        <p className="text-[11px] break-all text-[var(--text-muted)]">{asset.denom}</p>
+                                    )}
+                                </div>
+
+                                <div className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--text-muted)]">Balance</p>
+                                    <div className="mt-1 flex items-end gap-2">
+                                        <p className="text-2xl font-black text-foreground leading-none">{asset.displayAmount}</p>
+                                        <p className="text-sm font-bold text-primary/80">{asset.displaySymbol}</p>
+                                    </div>
+                                </div>
+
+                                {(asset.traceLabel || asset.routeLabel || asset.error) && (
+                                    <div className="space-y-1">
+                                        {asset.traceLabel && (
+                                            <p className="text-[11px] text-[var(--text-muted)]">{asset.traceLabel}</p>
+                                        )}
+                                        {asset.routeLabel && (
+                                            <p className="text-[11px] text-[var(--text-muted)]">{asset.routeLabel}</p>
+                                        )}
+                                        {asset.error && (
+                                            <p className="text-[11px] text-amber-300">{asset.error}</p>
+                                        )}
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={() => navigate('/send', {
+                                            state: {
+                                                assetContext: asset,
+                                                initialMode: 'same-chain'
+                                            }
+                                        })}
+                                        disabled={!asset.sendEnabled}
+                                        className="rounded-xl border border-border bg-background px-3 py-2 text-xs font-bold text-foreground transition-colors hover:bg-surfaceHighlight disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                        Send
+                                    </button>
+                                    <button
+                                        onClick={() => navigate('/send', {
+                                            state: {
+                                                assetContext: asset,
+                                                initialMode: 'ibc'
+                                            }
+                                        })}
+                                        disabled={!asset.transferEnabled}
+                                        className="rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                        To Other Chain
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
 
                 {showReceive && (
                     <ReceiveModal

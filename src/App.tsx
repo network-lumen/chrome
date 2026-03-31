@@ -10,7 +10,6 @@ import { LinkPQCBanner } from './components/dashboard/LinkPQCBanner';
 import { Staking } from './components/staking/Staking';
 import { Governance } from './components/governance/Governance';
 import { VaultManager } from './modules/vault/vault';
-import { REQUIRED_HOST_PERMISSIONS } from './permissions';
 import { openExpandedView } from './utils/navigation';
 import { Send } from './components/send/Send';
 import { ApprovalModal } from './components/ApprovalModal';
@@ -36,9 +35,6 @@ function App() {
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const isLockedRef = useRef(isLocked);
-  const [needsNetworkPermission, setNeedsNetworkPermission] = useState(false);
-  const [permissionError, setPermissionError] = useState<string | null>(null);
-  const permissionCheckedRef = useRef(false);
   const [pendingCount, setPendingCount] = useState(0);
   const STORAGE_PENDING_QUEUE = 'pendingApprovalQueue';
 
@@ -65,30 +61,9 @@ function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  const checkNetworkPermissions = async () => {
-    if (!chromeApi?.permissions) return;
-    try {
-      const granted = await chromeApi.permissions.contains({ origins: REQUIRED_HOST_PERMISSIONS });
-      setNeedsNetworkPermission(!granted);
-    } catch {
-      setNeedsNetworkPermission(true);
-    }
-  };
 
-  const requestNetworkPermissions = async () => {
-    if (!chromeApi?.permissions) return;
-    setPermissionError(null);
-    try {
-      const granted = await chromeApi.permissions.request({ origins: REQUIRED_HOST_PERMISSIONS });
-      if (!granted) {
-        setPermissionError('Network access denied. Some features may not work.');
-      }
-      setNeedsNetworkPermission(!granted);
-    } catch (e: any) {
-      setPermissionError(e?.message || 'Failed to request network permissions.');
-      setNeedsNetworkPermission(true);
-    }
-  };
+
+
 
   /* Persist active wallet */
   useEffect(() => {
@@ -153,10 +128,7 @@ function App() {
             if (location.pathname === '/' || location.pathname === '/onboarding') {
               navigate('/dashboard');
             }
-            if (!permissionCheckedRef.current) {
-              permissionCheckedRef.current = true;
-              await checkNetworkPermissions();
-            }
+
           } else {
             setIsLocked(true);
             if (location.pathname === '/onboarding') {
@@ -248,10 +220,6 @@ function App() {
       setIsLocked(false);
       setUnlockError(null);
 
-      if (!permissionCheckedRef.current) {
-        permissionCheckedRef.current = true;
-        await checkNetworkPermissions();
-      }
 
       // Check for pending approval request AFTER unlock
       const queue = await loadPendingQueue();
@@ -453,26 +421,7 @@ function App() {
         </div>
       )}
 
-      <main className="flex-1 overflow-y-auto relative">
-        {!isLocked && activeWallet && needsNetworkPermission && (
-          <div className="mx-4 mt-4 rounded-2xl border border-border bg-surfaceHighlight/80 p-3 text-xs text-[var(--text-muted)]">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="font-semibold text-foreground">Network access required</div>
-                <div>Allow access to Lumen RPC/REST endpoints for balance and transactions.</div>
-                {permissionError && (
-                  <div className="mt-1 text-xs text-red-400">{permissionError}</div>
-                )}
-              </div>
-              <button
-                onClick={requestNetworkPermissions}
-                className="px-3 py-2 rounded-xl bg-primary text-white text-xs font-semibold hover:bg-primary-hover"
-              >
-                Allow
-              </button>
-            </div>
-          </div>
-        )}
+      <main className="flex flex-1 min-h-0 flex-col overflow-hidden relative">
         {!isLocked && pendingCount > 0 && (
           <div className="mx-4 mt-3 rounded-2xl border border-border bg-surfaceHighlight/80 p-3 text-xs text-[var(--text-muted)]">
             <div className="flex items-center justify-between gap-3">
@@ -483,57 +432,59 @@ function App() {
             </div>
           </div>
         )}
-        <Routes>
-          <Route path="/" element={
-            isLocked
-              ? <div className="h-full"><Unlock onUnlock={handleUnlock} error={unlockError} /></div>
-              : (wallets.length > 0 ? <Navigate to="/dashboard" /> : <Navigate to="/wallet/create" />)
-          } />
-          <Route path="/dashboard" element={
-            activeWallet ? (
-              <WalletTab
-                onWalletReady={handleWalletReady}
-                activeKeys={activeWallet}
-                isAdding={wallets.length > 0 || hasVault}
-                onCancel={() => { }}
-                showLinkModal={false}
-                onCloseLinkModal={() => setIsLinkModalOpen(false)}
-              />
-            ) : <Navigate to="/" />
-          } />
-          <Route path="/wallet/create" element={
-            <div className="h-full">
-              {isLocked && hasVault ? (
-                <Navigate to="/" />
-              ) : (
+        <div className="flex-1 min-h-0">
+          <Routes>
+            <Route path="/" element={
+              isLocked
+                ? <div className="h-full"><Unlock onUnlock={handleUnlock} error={unlockError} /></div>
+                : (wallets.length > 0 ? <Navigate to="/dashboard" /> : <Navigate to="/wallet/create" />)
+            } />
+            <Route path="/dashboard" element={
+              activeWallet ? (
                 <WalletTab
                   onWalletReady={handleWalletReady}
-                  activeKeys={null}
+                  activeKeys={activeWallet}
                   isAdding={wallets.length > 0 || hasVault}
-                  onCancel={() => navigate('/dashboard')}
+                  onCancel={() => { }}
                   showLinkModal={false}
-                  onCloseLinkModal={() => { }}
+                  onCloseLinkModal={() => setIsLinkModalOpen(false)}
                 />
-              )}
-            </div>
-          } />
-          <Route path="/swap" element={
-            activeWallet ? <Swap walletKeys={activeWallet} /> : <Navigate to="/" />
-          } />
-          <Route path="/send" element={
-            activeWallet ? <Send activeKeys={activeWallet} onBack={() => navigate('/dashboard')} /> : <Navigate to="/" />
-          } />
-          <Route path="/stake" element={
-            activeWallet ? <Staking walletKeys={activeWallet} onBack={() => navigate('/dashboard')} /> : <Navigate to="/" />
-          } />
-          <Route path="/governance" element={
-            activeWallet ? <Governance walletKeys={activeWallet} onBack={() => navigate('/dashboard')} /> : <Navigate to="/" />
-          } />
-          <Route path="/settings" element={
-            <Settings onBack={() => navigate('/dashboard')} />
-          } />
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
+              ) : <Navigate to="/" />
+            } />
+            <Route path="/wallet/create" element={
+              <div className="h-full">
+                {isLocked && hasVault ? (
+                  <Navigate to="/" />
+                ) : (
+                  <WalletTab
+                    onWalletReady={handleWalletReady}
+                    activeKeys={null}
+                    isAdding={wallets.length > 0 || hasVault}
+                    onCancel={() => navigate('/dashboard')}
+                    showLinkModal={false}
+                    onCloseLinkModal={() => { }}
+                  />
+                )}
+              </div>
+            } />
+            <Route path="/swap" element={
+              activeWallet ? <Swap walletKeys={activeWallet} /> : <Navigate to="/" />
+            } />
+            <Route path="/send" element={
+              activeWallet ? <Send activeKeys={activeWallet} onBack={() => navigate('/dashboard')} /> : <Navigate to="/" />
+            } />
+            <Route path="/stake" element={
+              activeWallet ? <Staking walletKeys={activeWallet} onBack={() => navigate('/dashboard')} /> : <Navigate to="/" />
+            } />
+            <Route path="/governance" element={
+              activeWallet ? <Governance walletKeys={activeWallet} onBack={() => navigate('/dashboard')} /> : <Navigate to="/" />
+            } />
+            <Route path="/settings" element={
+              <Settings onBack={() => navigate('/dashboard')} />
+            } />
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </div>
       </main>
 
       {/* Footer Navigation */}

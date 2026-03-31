@@ -1,5 +1,6 @@
 import { Buffer } from 'buffer';
-import { DirectSecp256k1HdWallet } from '@cosmjs/proto-signing';
+import { DirectSecp256k1HdWallet, Registry, type EncodeObject } from '@cosmjs/proto-signing';
+import { SigningStargateClient, GasPrice, calculateFee, defaultRegistryTypes } from '@cosmjs/stargate';
 import { MsgSend } from 'cosmjs-types/cosmos/bank/v1beta1/tx';
 import { MsgTransfer } from 'cosmjs-types/ibc/applications/transfer/v1/tx';
 import { TxRaw, SignDoc, TxBody, AuthInfo, Fee } from 'cosmjs-types/cosmos/tx/v1beta1/tx';
@@ -18,6 +19,8 @@ import { NetworkManager } from './network';
 const CHAIN_ID = "lumen";
 const SEND_GAS_LIMIT = BigInt(200000);
 const IBC_TRANSFER_GAS_LIMIT = BigInt(350000);
+const STANDARD_SEND_GAS_LIMIT = 250000;
+const STANDARD_IBC_TRANSFER_GAS_LIMIT = 350000;
 // DEFAULT_REST replaced by NetworkManager
 
 /* Helper: Hex/Base64 Decoder */
@@ -241,12 +244,13 @@ export async function buildAndSignSendTx(
     toAddress: string,
     amountUlmn: string,
     memo: string,
-    apiEndpoint?: string
+    apiEndpoint?: string,
+    denom: string = 'ulmn'
 ): Promise<{ txBytes: Uint8Array; endpoint: string }> {
     const msgSend = MsgSend.encode({
         fromAddress: walletData.address,
         toAddress,
-        amount: [{ denom: 'ulmn', amount: amountUlmn }]
+        amount: [{ denom, amount: amountUlmn }]
     }).finish();
 
     const msgAny = Any.fromPartial({
@@ -266,18 +270,19 @@ export async function buildAndSignSendTx(
 export async function buildAndSignIbcTransferTx(
     walletData: LumenWallet,
     toAddress: string,
-    amountUlmn: string,
+    amountAmount: string,
     memo: string,
     sourceChannel: string,
     sourcePort: string = 'transfer',
     timeoutSeconds: number = 600,
-    apiEndpoint?: string
+    apiEndpoint?: string,
+    denom: string = 'ulmn'
 ): Promise<{ txBytes: Uint8Array; endpoint: string }> {
     const timeoutTimestamp = BigInt(Date.now() + timeoutSeconds * 1000) * 1_000_000n;
     const msgTransfer = MsgTransfer.encode(MsgTransfer.fromPartial({
         sourcePort,
         sourceChannel,
-        token: { denom: 'ulmn', amount: amountUlmn },
+        token: { denom, amount: amountAmount },
         sender: walletData.address,
         receiver: toAddress,
         timeoutTimestamp,
@@ -323,4 +328,149 @@ export async function broadcastTx(txBytes: Uint8Array, restUrl?: string): Promis
     }
 
     return data.tx_response.txhash;
+}
+
+function createStandardRegistry(): Registry {
+    return new Registry([
+        ...defaultRegistryTypes,
+        ['/ibc.applications.transfer.v1.MsgTransfer', MsgTransfer]
+    ]);
+}
+
+async function createStandardSigningClient(input: {
+    mnemonic: string;
+    prefix: string;
+    fromAddress: string;
+    rpcEndpoint: string;
+    feeDenom: string;
+    minGasPrice: number;
+}): Promise<{ client: SigningStargateClient; wallet: DirectSecp256k1HdWallet }> {
+    const wallet = await DirectSecp256k1HdWallet.fromMnemonic(input.mnemonic, { prefix: input.prefix });
+    const [account] = await wallet.getAccounts();
+
+    if (account.address !== input.fromAddress) {
+        throw new Error(`Mnemonic derived address ${account.address} does not match source address ${input.fromAddress}`);
+    }
+
+    const gasPrice = GasPrice.fromString(`${input.minGasPrice}${input.feeDenom}`);
+    const client = await SigningStargateClient.connectWithSigner(input.rpcEndpoint, wallet, {
+        registry: createStandardRegistry(),
+        gasPrice
+    });
+
+    return { client, wallet };
+}
+
+async function signAndBroadcastStandardTx(input: {
+    mnemonic: string;
+    prefix: string;
+    fromAddress: string;
+    rpcEndpoint: string;
+    feeDenom: string;
+    minGasPrice: number;
+    gasLimit: number;
+    memo?: string;
+    messages: EncodeObject[];
+}): Promise<string> {
+    const { client } = await createStandardSigningClient(input);
+
+    try {
+        const fee = calculateFee(
+            input.gasLimit,
+            GasPrice.fromString(`${input.minGasPrice}${input.feeDenom}`)
+        );
+        const result = await client.signAndBroadcast(
+            input.fromAddress,
+            input.messages,
+            fee,
+            input.memo || ''
+        );
+
+        if (result.code !== 0) {
+            const codespace = (result as any)?.codespace || 'sdk';
+            throw new Error(
+                `Broadcasting transaction failed with code ${result.code} (codespace: ${codespace}). Log: ${result.rawLog || 'Unknown error'}`
+            );
+        }
+
+        return result.transactionHash;
+    } finally {
+        client.disconnect();
+    }
+}
+
+export async function signAndBroadcastStandardSendTx(input: {
+    mnemonic: string;
+    prefix: string;
+    fromAddress: string;
+    toAddress: string;
+    amount: string;
+    denom: string;
+    memo?: string;
+    rpcEndpoint: string;
+    feeDenom: string;
+    minGasPrice: number;
+}): Promise<string> {
+    return signAndBroadcastStandardTx({
+        mnemonic: input.mnemonic,
+        prefix: input.prefix,
+        fromAddress: input.fromAddress,
+        rpcEndpoint: input.rpcEndpoint,
+        feeDenom: input.feeDenom,
+        minGasPrice: input.minGasPrice,
+        gasLimit: STANDARD_SEND_GAS_LIMIT,
+        memo: input.memo,
+        messages: [{
+            typeUrl: '/cosmos.bank.v1beta1.MsgSend',
+            value: MsgSend.fromPartial({
+                fromAddress: input.fromAddress,
+                toAddress: input.toAddress,
+                amount: [{ denom: input.denom, amount: input.amount }]
+            })
+        }]
+    });
+}
+
+export async function signAndBroadcastStandardIbcTransferTx(input: {
+    mnemonic: string;
+    prefix: string;
+    fromAddress: string;
+    toAddress: string;
+    amount: string;
+    denom: string;
+    memo?: string;
+    rpcEndpoint: string;
+    feeDenom: string;
+    minGasPrice: number;
+    sourceChannel: string;
+    sourcePort?: string;
+    timeoutSeconds?: number;
+}): Promise<string> {
+    const timeoutTimestamp = BigInt(Date.now() + (input.timeoutSeconds ?? 600) * 1000) * 1_000_000n;
+
+    return signAndBroadcastStandardTx({
+        mnemonic: input.mnemonic,
+        prefix: input.prefix,
+        fromAddress: input.fromAddress,
+        rpcEndpoint: input.rpcEndpoint,
+        feeDenom: input.feeDenom,
+        minGasPrice: input.minGasPrice,
+        gasLimit: STANDARD_IBC_TRANSFER_GAS_LIMIT,
+        memo: input.memo,
+        messages: [{
+            typeUrl: '/ibc.applications.transfer.v1.MsgTransfer',
+            value: MsgTransfer.fromPartial({
+                sourcePort: input.sourcePort || 'transfer',
+                sourceChannel: input.sourceChannel,
+                token: {
+                    denom: input.denom,
+                    amount: input.amount
+                },
+                sender: input.fromAddress,
+                receiver: input.toAddress,
+                timeoutTimestamp,
+                memo: input.memo || ''
+            })
+        }]
+    });
 }

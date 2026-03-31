@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BookUser } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { useSendTransaction } from '../../hooks/useSendTransaction';
 import { KeyManager, type LumenWallet } from '../../modules/sdk/key-manager';
 import { NetworkManager } from '../../modules/sdk/network';
@@ -8,9 +9,12 @@ import {
     fetchIbcChannels,
     getAddressPrefix,
     isProbablyBech32Address,
-    scoreIbcChannel,
     type IbcChannelOption
 } from '../../modules/sdk/ibc';
+import {
+    type AssetTransferTarget,
+    type CrossChainAssetRow
+} from '../../modules/assets/crossChain';
 import { ContactsModal } from '../contacts/ContactsModal';
 import { HistoryManager } from '../../modules/history/history';
 
@@ -21,21 +25,106 @@ interface SendProps {
 
 type SendMode = 'same-chain' | 'ibc';
 
+interface SendLocationState {
+    assetContext?: CrossChainAssetRow;
+    initialMode?: SendMode;
+}
+
+interface SendTargetOption {
+    key: string;
+    chainId: string;
+    chainLabel: string;
+    addressPrefix: string;
+    defaultRecipient: string;
+    sourceChannel: string;
+    sourcePort: string;
+    routeLabel: string;
+    expectedDestinationDenom: string;
+    expectedDestinationTracePath: string;
+    expectedDestinationDisplayName: string;
+}
+
+function mapChannelToTarget(channel: IbcChannelOption): SendTargetOption {
+    return {
+        key: `${channel.portId}:${channel.channelId}`,
+        chainId: channel.chainId || channel.channelId,
+        chainLabel: channel.label || 'Other chain',
+        addressPrefix: channel.addressPrefix || channel.prefixHints[0] || '',
+        defaultRecipient: '',
+        sourceChannel: channel.channelId,
+        sourcePort: channel.portId,
+        routeLabel: `${channel.portId}/${channel.channelId}`,
+        expectedDestinationDenom: channel.expectedDestinationDenom || '',
+        expectedDestinationTracePath: channel.expectedDestinationTracePath || '',
+        expectedDestinationDisplayName: channel.expectedDestinationDisplayName || ''
+    };
+}
+
+function mapAssetTransferTarget(target: AssetTransferTarget): SendTargetOption {
+    return {
+        key: target.key,
+        chainId: target.chainId,
+        chainLabel: target.chainLabel,
+        addressPrefix: target.addressPrefix,
+        defaultRecipient: target.defaultRecipient,
+        sourceChannel: target.sourceChannel,
+        sourcePort: target.sourcePort,
+        routeLabel: target.routeLabel,
+        expectedDestinationDenom: '',
+        expectedDestinationTracePath: '',
+        expectedDestinationDisplayName: ''
+    };
+}
+
+function formatDisplayAmount(value: number): string {
+    if (!Number.isFinite(value) || value <= 0) return '0';
+    return value.toFixed(6).replace(/\.?0+$/, '') || '0';
+}
+
+function buildExplorerUrl(chainId: string, txHash: string): string {
+    if (String(chainId || '').startsWith('lumen')) {
+        return `https://winscan.winsnip.xyz/lumen-mainnet/transactions/${txHash}`;
+    }
+    return '';
+}
+
+async function fetchAssetBalance(restEndpoint: string, ownerAddress: string, denom: string): Promise<number> {
+    const base = String(restEndpoint || '').replace(/\/+$/, '');
+    const res = await fetch(`${base}/cosmos/bank/v1beta1/balances/${encodeURIComponent(ownerAddress)}`);
+    if (!res.ok) {
+        throw new Error('Failed to fetch balance');
+    }
+
+    const data = await res.json();
+    const balances = Array.isArray(data?.balances) ? data.balances : [];
+    const coin = balances.find((entry: any) => String(entry?.denom || '').trim() === denom);
+    return parseFloat(String(coin?.amount || '0')) / 1_000_000;
+}
+
 export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
+    const location = useLocation();
+    const locationState = (location.state || null) as SendLocationState | null;
+    const assetContext = locationState?.assetContext || null;
+    const initialMode = locationState?.initialMode;
+
     const { sendTransaction, ibcTransfer, isLoading, error, successHash, resetState } = useSendTransaction();
 
-    const [mode, setMode] = useState<SendMode>('same-chain');
+    const [mode, setMode] = useState<SendMode>(() => {
+        if (initialMode === 'ibc' && (assetContext?.transferEnabled ?? true)) {
+            return 'ibc';
+        }
+        return 'same-chain';
+    });
     const [recipient, setRecipient] = useState('');
     const [amount, setAmount] = useState('');
     const [memo, setMemo] = useState('');
     const [showConfirm, setShowConfirm] = useState(false);
     const [showContacts, setShowContacts] = useState(false);
 
-    const [ibcChannels, setIbcChannels] = useState<IbcChannelOption[]>([]);
+    const [dynamicIbcChannels, setDynamicIbcChannels] = useState<SendTargetOption[]>([]);
     const [ibcChannelsLoading, setIbcChannelsLoading] = useState(false);
     const [ibcChannelsError, setIbcChannelsError] = useState<string | null>(null);
-    const [selectedChannelId, setSelectedChannelId] = useState('');
-    const [selectedPortId, setSelectedPortId] = useState('transfer');
+    const [selectedTargetKey, setSelectedTargetKey] = useState('');
     const [defaultIbcRecipient, setDefaultIbcRecipient] = useState('');
     const [lastAutoRecipient, setLastAutoRecipient] = useState('');
 
@@ -43,48 +132,74 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
     const [isBalanceLoading, setIsBalanceLoading] = useState(false);
     const [localError, setLocalError] = useState<string | null>(null);
 
+    const historySavedHashRef = useRef<string | null>(null);
+
+    const isIbcMode = mode === 'ibc';
+    const sourceChainId = assetContext?.chainId || 'lumen';
+    const sourceChainLabel = assetContext?.chainLabel || 'Lumen';
+    const sourceAddress = assetContext?.ownerAddress || activeKeys.address;
+    const sourcePrefix = assetContext?.addressPrefix || getAddressPrefix(sourceAddress) || 'lmn';
+    const sourceDenom = assetContext?.denom || 'ulmn';
+    const sourceSymbol = assetContext?.displaySymbol || 'LMN';
+    const sourceName = assetContext?.displayName || 'Lumen';
+    const sourceRestEndpoint = assetContext?.restEndpoint || NetworkManager.getInstance().getQuickRestEndpoint();
+    const sourceRpcEndpoint = assetContext?.rpcEndpoint || '';
+    const sourceFeeDenom = assetContext?.feeDenom || 'ulmn';
+    const sourceMinGasPrice = assetContext?.minGasPrice ?? 0;
+    const sourceIsLocal = assetContext?.isLocal ?? true;
+
+    const assetTargets = useMemo(
+        () => (assetContext?.transferTargets || []).map((target) => mapAssetTransferTarget(target)),
+        [assetContext]
+    );
+    const availableIbcTargets = assetContext ? assetTargets : dynamicIbcChannels;
+
     const displayedError = error || localError;
     const showLinkPqcHint = !!displayedError && /account not linked on chain yet|not linked on chain|missing pqc key|pqc signature required/i.test(displayedError);
-
-    const senderPrefix = getAddressPrefix(activeKeys.address) || 'lmn';
-    const isIbcMode = mode === 'ibc';
     const recipientPrefix = getAddressPrefix(recipient);
-    const selectedIbcChannel = ibcChannels.find(
-        (channel) => channel.channelId === selectedChannelId && channel.portId === selectedPortId
-    ) || null;
-    const selectedIbcPrefix = selectedIbcChannel?.addressPrefix || selectedIbcChannel?.prefixHints[0] || '';
-    const selectedIbcLabel = selectedIbcChannel?.label || 'Other chain';
-    const selectedIbcExpectedAssetLabel = selectedIbcChannel?.expectedDestinationDisplayName || '';
-    const selectedIbcExpectedDenom = selectedIbcChannel?.expectedDestinationDenom || '';
-    const selectedIbcExpectedTrace = selectedIbcChannel?.expectedDestinationTracePath || '';
+
+    const selectedTarget = useMemo(
+        () => availableIbcTargets.find((target) => target.key === selectedTargetKey) || null,
+        [availableIbcTargets, selectedTargetKey]
+    );
+
     const recipientPlaceholder = isIbcMode
-        ? (selectedIbcPrefix ? `${selectedIbcPrefix}1...` : 'address on the other chain')
-        : `${senderPrefix}1...`;
+        ? (selectedTarget?.addressPrefix ? `${selectedTarget.addressPrefix}1...` : 'address on the other chain')
+        : `${sourcePrefix}1...`;
+
+    const amountLabel = `Amount (${sourceSymbol})`;
+    const headerTitle = isIbcMode ? `Transfer ${sourceSymbol} To Other Chain` : `Send ${sourceSymbol}`;
+    const successExplorerUrl = successHash ? buildExplorerUrl(sourceChainId, successHash) : '';
 
     useEffect(() => {
-        const fetchBalance = async () => {
+        let cancelled = false;
+
+        const loadBalance = async () => {
             try {
                 setIsBalanceLoading(true);
-                const endpoint = NetworkManager.getInstance().getQuickRestEndpoint();
-                const res = await fetch(`${endpoint}/cosmos/bank/v1beta1/balances/${activeKeys.address}`);
-                if (!res.ok) throw new Error("Failed to fetch balance");
-                const data = await res.json();
-                const ulmn = data.balances?.find((b: any) => b.denom === 'ulmn');
-                if (ulmn) {
-                    setBalance(parseFloat(ulmn.amount) / 1_000_000);
+                const nextBalance = await fetchAssetBalance(sourceRestEndpoint, sourceAddress, sourceDenom);
+                if (!cancelled) {
+                    setBalance(nextBalance);
                 }
             } catch (e) {
-                console.error("Balance fetch error:", e);
+                if (!cancelled) {
+                    console.error('Balance fetch error:', e);
+                }
             } finally {
-                setIsBalanceLoading(false);
+                if (!cancelled) {
+                    setIsBalanceLoading(false);
+                }
             }
         };
 
-        fetchBalance();
-    }, [activeKeys.address]);
+        void loadBalance();
+        return () => {
+            cancelled = true;
+        };
+    }, [sourceAddress, sourceDenom, sourceRestEndpoint]);
 
     useEffect(() => {
-        if (!isIbcMode || ibcChannels.length > 0) return;
+        if (!isIbcMode || assetContext || dynamicIbcChannels.length > 0) return;
 
         let cancelled = false;
 
@@ -95,30 +210,30 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                 const channels = await fetchIbcChannels();
                 if (cancelled) return;
 
-                setIbcChannels(channels);
-                if (!channels.length) {
+                const basicTargets = channels.map((channel) => mapChannelToTarget(channel));
+                setDynamicIbcChannels(basicTargets);
+
+                if (!basicTargets.length) {
                     setIbcChannelsError('No route to another chain is available right now.');
-                } else {
-                    setIbcChannelsLoading(false);
-
-                    void Promise.allSettled(
-                        channels.map((channel) => (channel.knownMeta ? Promise.resolve(channel) : enrichIbcChannel(channel)))
-                    ).then((results) => {
-                        if (cancelled) return;
-
-                        const enriched = results
-                            .map((result, index) => result.status === 'fulfilled' ? result.value : channels[index])
-                            .sort((a, b) => a.label.localeCompare(b.label));
-
-                        setIbcChannels(enriched);
-                    });
-
                     return;
                 }
+
+                void Promise.allSettled(
+                    channels.map((channel) => (channel.knownMeta ? Promise.resolve(channel) : enrichIbcChannel(channel)))
+                ).then((results) => {
+                    if (cancelled) return;
+
+                    const enrichedTargets = results
+                        .map((result, index) => result.status === 'fulfilled' ? mapChannelToTarget(result.value) : basicTargets[index])
+                        .sort((a, b) => a.chainLabel.localeCompare(b.chainLabel));
+
+                    setDynamicIbcChannels(enrichedTargets);
+                });
             } catch (e: any) {
-                if (cancelled) return;
-                setIbcChannels([]);
-                setIbcChannelsError(e?.message || 'Failed to load destinations.');
+                if (!cancelled) {
+                    setDynamicIbcChannels([]);
+                    setIbcChannelsError(e?.message || 'Failed to load destinations.');
+                }
             } finally {
                 if (!cancelled) {
                     setIbcChannelsLoading(false);
@@ -126,51 +241,58 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
             }
         };
 
-        loadChannels();
-
+        void loadChannels();
         return () => {
             cancelled = true;
         };
-    }, [ibcChannels.length, isIbcMode]);
+    }, [assetContext, dynamicIbcChannels.length, isIbcMode]);
 
     useEffect(() => {
-        if (!isIbcMode || !ibcChannels.length) return;
-        if (selectedIbcChannel) return;
+        if (!isIbcMode) return;
 
-        const ranked = [...ibcChannels]
-            .map((channel) => ({ channel, score: scoreIbcChannel(channel, recipientPrefix) }))
-            .sort((a, b) => b.score - a.score || a.channel.label.localeCompare(b.channel.label));
+        if (!availableIbcTargets.length) {
+            setSelectedTargetKey('');
+            return;
+        }
 
-        const next = ranked[0]?.channel || ibcChannels[0];
-        if (!next) return;
+        if (selectedTarget) return;
 
-        setSelectedChannelId(next.channelId);
-        setSelectedPortId(next.portId);
-    }, [ibcChannels, isIbcMode, recipientPrefix, selectedIbcChannel]);
+        const ranked = [...availableIbcTargets].sort((a, b) => {
+            const scoreA = a.addressPrefix && a.addressPrefix === recipientPrefix ? 100 : 0;
+            const scoreB = b.addressPrefix && b.addressPrefix === recipientPrefix ? 100 : 0;
+            return scoreB - scoreA || a.chainLabel.localeCompare(b.chainLabel);
+        });
+
+        setSelectedTargetKey(ranked[0].key);
+    }, [availableIbcTargets, isIbcMode, recipientPrefix, selectedTarget]);
 
     useEffect(() => {
-        if (!isIbcMode || !selectedIbcPrefix) {
+        if (!isIbcMode || !selectedTarget) {
             setDefaultIbcRecipient('');
             return;
         }
 
         let cancelled = false;
 
-        const deriveRecipient = async () => {
+        const loadDefaultRecipient = async () => {
             try {
-                const derived = await KeyManager.deriveAddressWithPrefix(activeKeys.mnemonic, selectedIbcPrefix);
+                const nextDefaultRecipient = selectedTarget.defaultRecipient
+                    || (selectedTarget.addressPrefix
+                        ? await KeyManager.deriveAddressWithPrefix(activeKeys.mnemonic, selectedTarget.addressPrefix)
+                        : '');
+
                 if (cancelled) return;
 
-                setDefaultIbcRecipient(derived);
+                setDefaultIbcRecipient(nextDefaultRecipient);
 
                 const shouldAutofill =
                     !recipient ||
                     recipient === lastAutoRecipient ||
-                    recipientPrefix === senderPrefix;
+                    recipientPrefix === sourcePrefix;
 
-                if (shouldAutofill) {
-                    setRecipient(derived);
-                    setLastAutoRecipient(derived);
+                if (nextDefaultRecipient && shouldAutofill) {
+                    setRecipient(nextDefaultRecipient);
+                    setLastAutoRecipient(nextDefaultRecipient);
                 }
             } catch {
                 if (!cancelled) {
@@ -179,20 +301,34 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
             }
         };
 
-        deriveRecipient();
-
+        void loadDefaultRecipient();
         return () => {
             cancelled = true;
         };
-    }, [
-        activeKeys.mnemonic,
-        isIbcMode,
-        lastAutoRecipient,
-        recipient,
-        recipientPrefix,
-        selectedIbcPrefix,
-        senderPrefix
-    ]);
+    }, [activeKeys.mnemonic, isIbcMode, lastAutoRecipient, recipient, recipientPrefix, selectedTarget, sourcePrefix]);
+
+    useEffect(() => {
+        if (!assetContext) return;
+        if (initialMode === 'ibc' && assetContext.transferEnabled) {
+            setMode('ibc');
+        }
+    }, [assetContext, initialMode]);
+
+    useEffect(() => {
+        if (!successHash || historySavedHashRef.current === successHash) return;
+
+        HistoryManager.saveTransaction(activeKeys.address, {
+            hash: successHash,
+            height: '0',
+            timestamp: new Date().toISOString(),
+            type: 'send',
+            amount,
+            denom: sourceSymbol,
+            counterparty: recipient,
+            status: 'success'
+        });
+        historySavedHashRef.current = successHash;
+    }, [activeKeys.address, amount, isIbcMode, recipient, sourceSymbol, successHash]);
 
     const handleModeChange = (nextMode: SendMode) => {
         setMode(nextMode);
@@ -218,19 +354,18 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
         if (!trimmedRecipient || !amount) return;
 
         const numAmount = parseFloat(amount);
-
-        if (numAmount < 0.001) {
-            setLocalError("Minimum transfer is 0.001 LMN");
+        if (isNaN(numAmount) || numAmount <= 0) {
+            setLocalError(`Enter a valid ${sourceSymbol} amount.`);
             return;
         }
 
         if (numAmount > balance) {
-            setLocalError(`Insufficient balance. Maximum available: ${balance.toFixed(6)} LMN`);
+            setLocalError(`Insufficient balance. Maximum available: ${formatDisplayAmount(balance)} ${sourceSymbol}`);
             return;
         }
 
         if (isIbcMode) {
-            if (!selectedIbcChannel) {
+            if (!selectedTarget) {
                 setLocalError(ibcChannelsLoading ? 'Destinations are still loading.' : 'Please select another chain.');
                 return;
             }
@@ -240,17 +375,17 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                 return;
             }
 
-            if (recipientPrefix === senderPrefix) {
-                setLocalError(`This looks like a ${senderPrefix.toUpperCase()} address. Use same-chain send instead.`);
+            if (recipientPrefix === sourcePrefix) {
+                setLocalError(`This looks like a ${sourcePrefix.toUpperCase()} address. Use same-chain send instead.`);
                 return;
             }
 
-            if (selectedIbcPrefix && recipientPrefix && recipientPrefix !== selectedIbcPrefix) {
-                setLocalError(`Recipient must use the ${selectedIbcPrefix} address format for the other chain.`);
+            if (selectedTarget.addressPrefix && recipientPrefix && recipientPrefix !== selectedTarget.addressPrefix) {
+                setLocalError(`Recipient must use the ${selectedTarget.addressPrefix} address format for ${selectedTarget.chainLabel}.`);
                 return;
             }
-        } else if (recipientPrefix !== senderPrefix) {
-            setLocalError(`Recipient must use the ${senderPrefix} address format.`);
+        } else if (recipientPrefix !== sourcePrefix) {
+            setLocalError(`Recipient must use the ${sourcePrefix.toUpperCase()} address format.`);
             return;
         }
 
@@ -262,18 +397,33 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
             const targetRecipient = recipient.trim();
 
             if (isIbcMode) {
-                if (!selectedIbcChannel) {
+                if (!selectedTarget) {
                     throw new Error('Missing destination route.');
                 }
 
                 await ibcTransfer(activeKeys, targetRecipient, amount, {
                     memo,
-                    sourceChannel: selectedIbcChannel.channelId,
-                    sourcePort: selectedIbcChannel.portId,
-                    timeoutSeconds: 600
+                    sourceChannel: selectedTarget.sourceChannel,
+                    sourcePort: selectedTarget.sourcePort,
+                    timeoutSeconds: 600,
+                    denom: sourceDenom,
+                    useStandardTx: !sourceIsLocal,
+                    fromAddress: sourceAddress,
+                    addressPrefix: sourcePrefix,
+                    rpcEndpoint: sourceRpcEndpoint,
+                    feeDenom: sourceFeeDenom,
+                    minGasPrice: sourceMinGasPrice
                 });
             } else {
-                await sendTransaction(activeKeys, targetRecipient, amount, memo);
+                await sendTransaction(activeKeys, targetRecipient, amount, memo, {
+                    denom: sourceDenom,
+                    useStandardTx: !sourceIsLocal,
+                    fromAddress: sourceAddress,
+                    addressPrefix: sourcePrefix,
+                    rpcEndpoint: sourceRpcEndpoint,
+                    feeDenom: sourceFeeDenom,
+                    minGasPrice: sourceMinGasPrice
+                });
             }
 
             setShowConfirm(false);
@@ -283,17 +433,6 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
     };
 
     if (successHash) {
-        HistoryManager.saveTransaction(activeKeys.address, {
-            hash: successHash,
-            height: '0',
-            timestamp: new Date().toISOString(),
-            type: 'send',
-            amount: amount,
-            denom: 'LMN',
-            counterparty: recipient,
-            status: 'success'
-        });
-
         return (
             <div className="flex flex-col h-full animate-fade-in p-6 items-center justify-center text-center space-y-6">
                 <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center text-green-500 mb-2">
@@ -302,18 +441,23 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                 <h2 className="text-2xl font-bold text-foreground">{isIbcMode ? 'Transfer Submitted!' : 'Transaction Sent!'}</h2>
                 <div className="bg-surface border border-border rounded-xl p-4 w-full break-all">
                     <p className="text-[10px] text-[var(--text-muted)] uppercase font-bold mb-1">Tx Hash</p>
-                    <a
-                        href={`https://winscan.winsnip.xyz/lumen-mainnet/transactions/${successHash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-mono text-primary hover:underline hover:text-primary-hover transition-all"
-                    >
-                        {successHash}
-                    </a>
+                    {successExplorerUrl ? (
+                        <a
+                            href={successExplorerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-mono text-primary hover:underline hover:text-primary-hover transition-all"
+                        >
+                            {successHash}
+                        </a>
+                    ) : (
+                        <p className="text-xs font-mono text-primary">{successHash}</p>
+                    )}
                 </div>
                 <button
                     onClick={() => {
                         resetState();
+                        historySavedHashRef.current = null;
                         setRecipient('');
                         setAmount('');
                         setMemo('');
@@ -328,7 +472,7 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
     }
 
     return (
-        <div className="flex flex-col h-full animate-fade-in relative">
+        <div className="flex flex-col h-full min-h-0 animate-fade-in relative">
             <header className="flex items-center gap-4 p-4 border-b border-border">
                 <button
                     onClick={onBack}
@@ -336,10 +480,31 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                 >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                 </button>
-                <h2 className="text-lg font-bold text-foreground">{isIbcMode ? 'Transfer To Other Chain' : 'Send LMN'}</h2>
+                <h2 className="text-lg font-bold text-foreground">{headerTitle}</h2>
             </header>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-6 flex-1 overflow-y-auto">
+            <form onSubmit={handleSubmit} className="p-6 pb-24 space-y-6 flex-1 overflow-y-auto">
+                {assetContext && (
+                    <div className="rounded-2xl border border-border bg-surface p-4 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-semibold text-foreground">{sourceName}</p>
+                                <p className="text-[11px] text-[var(--text-muted)]">{sourceChainLabel} · {sourceSymbol}</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-xs font-semibold text-foreground">{formatDisplayAmount(balance)} {sourceSymbol}</p>
+                                <p className="text-[11px] text-[var(--text-muted)] font-mono">{sourceAddress}</p>
+                            </div>
+                        </div>
+                        {assetContext.traceLabel && (
+                            <p className="text-[11px] text-[var(--text-muted)]">{assetContext.traceLabel}</p>
+                        )}
+                        {assetContext.routeLabel && (
+                            <p className="text-[11px] text-[var(--text-muted)]">{assetContext.routeLabel}</p>
+                        )}
+                    </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-2 rounded-2xl bg-surface p-1 border border-border">
                     <button
                         type="button"
@@ -354,10 +519,11 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                     <button
                         type="button"
                         onClick={() => handleModeChange('ibc')}
+                        disabled={assetContext ? !assetContext.transferEnabled : false}
                         className={`rounded-xl px-4 py-3 text-sm font-bold transition-all ${isIbcMode
                             ? 'bg-primary text-white shadow-lg shadow-primary/20'
                             : 'text-[var(--text-muted)] hover:text-foreground hover:bg-surfaceHighlight'
-                            }`}
+                            } ${assetContext && !assetContext.transferEnabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                         To Other Chain
                     </button>
@@ -367,55 +533,56 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                     <div className="space-y-3 rounded-2xl border border-border bg-surface p-4">
                         <div className="flex items-center justify-between gap-3">
                             <label className="text-xs font-medium text-[var(--text-muted)]">Other Chain</label>
-                            {selectedIbcChannel && (
+                            {selectedTarget && (
                                 <span className="text-[10px] font-bold uppercase tracking-wide text-primary">
-                                    {selectedIbcLabel}
+                                    {selectedTarget.chainLabel}
                                 </span>
                             )}
                         </div>
 
                         <select
-                            value={selectedChannelId ? `${selectedPortId}:${selectedChannelId}` : ''}
+                            value={selectedTargetKey}
                             onChange={(e) => {
-                                const [portId, channelId] = e.target.value.split(':');
-                                setSelectedPortId(portId || 'transfer');
-                                setSelectedChannelId(channelId || '');
+                                setSelectedTargetKey(e.target.value);
                                 setLocalError(null);
                             }}
                             className="w-full bg-background border border-border rounded-xl p-4 text-foreground text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
-                            disabled={ibcChannelsLoading || !ibcChannels.length}
+                            disabled={ibcChannelsLoading || !availableIbcTargets.length}
                         >
                             <option value="">
                                 {ibcChannelsLoading ? 'Loading destinations...' : 'Select another chain'}
                             </option>
-                            {ibcChannels.map((channel) => (
+                            {availableIbcTargets.map((target) => (
                                 <option
-                                    key={`${channel.portId}:${channel.channelId}`}
-                                    value={`${channel.portId}:${channel.channelId}`}
+                                    key={target.key}
+                                    value={target.key}
                                 >
-                                    {channel.label}
+                                    {target.chainLabel}
                                 </option>
                             ))}
                         </select>
 
-                        {selectedIbcChannel && (
+                        {selectedTarget && (
                             <div className="rounded-xl border border-border/70 bg-background/60 p-3 space-y-2">
                                 <p className="text-[11px] text-[var(--text-muted)]">
-                                    Route from Lumen: <span className="font-mono text-foreground">{selectedIbcChannel.portId}/{selectedIbcChannel.channelId}</span>
+                                    Transfer route: <span className="font-mono text-foreground">{selectedTarget.routeLabel}</span>
                                 </p>
                                 <p className="text-[11px] text-[var(--text-muted)]">
-                                    Other chain: <span className="text-foreground font-semibold">{selectedIbcLabel}</span>
-                                    {selectedIbcPrefix ? ` · ${selectedIbcPrefix}1...` : ''}
+                                    Source chain: <span className="text-foreground font-semibold">{sourceChainLabel}</span>
                                 </p>
-                                {selectedIbcExpectedAssetLabel && (
+                                <p className="text-[11px] text-[var(--text-muted)]">
+                                    Destination: <span className="text-foreground font-semibold">{selectedTarget.chainLabel}</span>
+                                    {selectedTarget.addressPrefix ? ` · ${selectedTarget.addressPrefix}1...` : ''}
+                                </p>
+                                {selectedTarget.expectedDestinationDisplayName && (
                                     <p className="text-[11px] text-[var(--text-muted)]">
-                                        Recipient gets on the other chain: <span className="text-foreground font-semibold">{selectedIbcExpectedAssetLabel}</span>
+                                        Recipient gets: <span className="text-foreground font-semibold">{selectedTarget.expectedDestinationDisplayName}</span>
                                     </p>
                                 )}
-                                {selectedIbcExpectedDenom && (
+                                {selectedTarget.expectedDestinationDenom && (
                                     <p className="text-[11px] text-[var(--text-muted)] break-all">
-                                        Expected denom: <span className="font-mono text-foreground">{selectedIbcExpectedDenom}</span>
-                                        {selectedIbcExpectedTrace ? ` (${selectedIbcExpectedTrace}/ulmn)` : ''}
+                                        Expected denom: <span className="font-mono text-foreground">{selectedTarget.expectedDestinationDenom}</span>
+                                        {selectedTarget.expectedDestinationTracePath ? ` (${selectedTarget.expectedDestinationTracePath}/${sourceDenom})` : ''}
                                     </p>
                                 )}
                                 {defaultIbcRecipient && (
@@ -452,7 +619,7 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                         <label className="text-xs font-medium text-[var(--text-muted)]">
                             {isIbcMode ? 'Recipient on Other Chain' : 'Recipient Address'}
                         </label>
-                        {!isIbcMode && (
+                        {!isIbcMode && sourceIsLocal && (
                             <button
                                 type="button"
                                 onClick={() => setShowContacts(true)}
@@ -478,13 +645,13 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
 
                 <div className="space-y-2">
                     <div className="flex justify-between items-center ml-1">
-                        <label className="text-xs font-medium text-[var(--text-muted)]">Amount (LMN)</label>
+                        <label className="text-xs font-medium text-[var(--text-muted)]">{amountLabel}</label>
                         <button
                             type="button"
-                            onClick={() => setAmount(balance.toString())}
+                            onClick={() => setAmount(formatDisplayAmount(balance))}
                             className="text-[10px] font-bold text-primary hover:text-primary-hover transition-colors flex items-center gap-1"
                         >
-                            MAX: {isBalanceLoading ? '...' : balance.toFixed(6)}
+                            MAX: {isBalanceLoading ? '...' : formatDisplayAmount(balance)}
                         </button>
                     </div>
                     <div className="relative">
@@ -500,7 +667,7 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                             className="w-full bg-surface border border-border rounded-xl p-4 text-foreground text-lg font-bold focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-[var(--text-dim)]"
                             required
                         />
-                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-[var(--text-muted)]">LMN</span>
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-[var(--text-muted)]">{sourceSymbol}</span>
                     </div>
                 </div>
 
@@ -510,7 +677,7 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                         type="text"
                         value={memo}
                         onChange={(e) => setMemo(e.target.value)}
-                        placeholder={isIbcMode ? 'Optional memo for this transfer...' : 'Public note...'}
+                        placeholder={isIbcMode ? 'Tx memo / IBC packet memo...' : 'Public note...'}
                         className="w-full bg-surface border border-border rounded-xl p-4 text-foreground text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-[var(--text-dim)]"
                     />
                 </div>
@@ -529,10 +696,10 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                 <div className="pt-4">
                     <button
                         type="submit"
-                        disabled={!recipient || !amount || isLoading || (isIbcMode && (!selectedIbcChannel || ibcChannelsLoading))}
+                        disabled={!recipient || !amount || isLoading || (isIbcMode && (!selectedTarget || ibcChannelsLoading))}
                         className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-bold py-3.5 rounded-xl transition-all"
                     >
-                        {isIbcMode ? 'Review Transfer To Other Chain' : 'Review Transaction'}
+                        {isIbcMode ? `Review ${sourceSymbol} Transfer` : `Review ${sourceSymbol} Send`}
                     </button>
                 </div>
             </form>
@@ -544,28 +711,28 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                             <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mb-2">
                                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
                             </div>
-                            <h3 className="text-xl font-bold text-foreground">{isIbcMode ? 'Confirm Transfer To Other Chain' : 'Confirm Transfer'}</h3>
+                            <h3 className="text-xl font-bold text-foreground">{isIbcMode ? 'Confirm Transfer To Other Chain' : 'Confirm Send'}</h3>
                             <p className="text-xs text-[var(--text-muted)]">Please review the details below</p>
                         </div>
 
                         <div className="space-y-3">
                             <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10 space-y-1 text-center">
                                 <p className="text-[10px] text-primary/60 uppercase font-black tracking-widest">Amount to Send</p>
-                                <p className="text-3xl font-black text-primary">{amount} <span className="text-sm font-bold opacity-70">LMN</span></p>
+                                <p className="text-3xl font-black text-primary">{amount} <span className="text-sm font-bold opacity-70">{sourceSymbol}</span></p>
                             </div>
 
                             <div className="bg-surfaceHighlight/50 p-4 rounded-2xl border border-border/30 space-y-3">
-                                {isIbcMode && selectedIbcChannel && (
+                                <div className="space-y-1.5 text-center">
+                                    <p className="text-[10px] text-[var(--text-muted)] uppercase font-bold tracking-wider">Source Chain</p>
+                                    <p className="text-xs text-foreground">{sourceChainLabel}</p>
+                                </div>
+
+                                {isIbcMode && selectedTarget && (
                                     <div className="space-y-1.5 text-center">
                                         <p className="text-[10px] text-[var(--text-muted)] uppercase font-bold tracking-wider">Transfer Route</p>
                                         <p className="text-xs text-foreground">
-                                            {selectedIbcChannel.portId}/{selectedIbcChannel.channelId} → {selectedIbcLabel}
+                                            {selectedTarget.routeLabel} → {selectedTarget.chainLabel}
                                         </p>
-                                        {selectedIbcExpectedAssetLabel && (
-                                            <p className="text-[11px] text-[var(--text-muted)]">
-                                                Recipient gets {selectedIbcExpectedAssetLabel}
-                                            </p>
-                                        )}
                                     </div>
                                 )}
 
