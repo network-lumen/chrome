@@ -159,7 +159,7 @@ export const Governance: React.FC<GovernanceProps> = ({ walletKeys, onBack }) =>
 
     if (selectedProposal) {
         return (
-            <div className="flex flex-col h-full bg-background">
+            <div className="flex flex-col h-full min-h-0 bg-background">
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-surface">
                     <button
@@ -173,7 +173,7 @@ export const Governance: React.FC<GovernanceProps> = ({ walletKeys, onBack }) =>
                 </div>
 
                 {/* Proposal Details */}
-                <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                <div className="flex-1 overflow-y-auto p-3 pb-24 space-y-3">
                     <div className="bg-surface border border-border rounded-lg p-3">
                         <div className="flex items-center justify-between mb-2">
                             <h2 className="text-base font-semibold text-foreground">{selectedProposal.title}</h2>
@@ -310,7 +310,7 @@ export const Governance: React.FC<GovernanceProps> = ({ walletKeys, onBack }) =>
     }
 
     return (
-        <div className="flex flex-col h-full bg-background">
+        <div className="flex flex-col h-full min-h-0 bg-background">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-4 border-b border-border bg-surface/80 backdrop-blur-xl">
                 <button
@@ -330,7 +330,7 @@ export const Governance: React.FC<GovernanceProps> = ({ walletKeys, onBack }) =>
             </div>
 
             {/* Proposals List */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <div className="flex-1 overflow-y-auto p-3 pb-24 space-y-2">
                 {fetching ? (
                     <div className="text-center py-10">
                         <RefreshCw className="w-10 h-10 text-primary mx-auto mb-2 animate-spin" />

@@ -296,7 +296,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
         .sort((a, b) => Number(b.votingPower) - Number(a.votingPower));
 
     return (
-        <div className="flex flex-col h-full bg-background relative">
+        <div className="flex flex-col h-full min-h-0 bg-background relative">
             <style>{`
                 input::-webkit-outer-spin-button,
                 input::-webkit-inner-spin-button {
@@ -340,7 +340,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
 
             {/* Dashboard View */}
             {step === 'dashboard' && (
-                <div className="flex flex-col h-full overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex flex-col h-full min-h-0 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
                     {/* Stats Cards */}
                     <div className="grid grid-cols-3 gap-1.5 p-3 pb-2">
                         <div className="bg-surface border border-border rounded-lg p-2 hover:bg-surfaceHighlight transition-colors min-w-0">
@@ -572,7 +572,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
 
             {/* Detail View */}
             {step === 'detail' && selectedValidator && (
-                <div className="flex flex-col h-full bg-surface/30 px-4 pt-3 animate-in slide-in-from-right-4 duration-300">
+                <div className="flex flex-col h-full min-h-0 bg-surface/30 px-4 pt-3 animate-in slide-in-from-right-4 duration-300">
                     <div className="flex-1 space-y-4 overflow-y-auto scrollbar-hide">
                         {/* Validator Card */}
                         <div className="bg-surface border border-border rounded-2xl p-4 shadow-2xl relative overflow-hidden group">

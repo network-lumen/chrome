@@ -234,7 +234,7 @@ export const Swap: React.FC<SwapProps> = ({ walletKeys }) => {
     );
 
     return (
-        <div className="flex flex-col h-full animate-fade-in relative">
+        <div className="flex flex-col h-full min-h-0 animate-fade-in relative">
             <header className="flex items-center gap-4 p-4 border-b border-border">
                 {step !== 'PROCESSING' && step !== 'SUCCESS' && (
                     <button
@@ -247,7 +247,7 @@ export const Swap: React.FC<SwapProps> = ({ walletKeys }) => {
                 <h2 className="text-lg font-bold text-foreground">Swap</h2>
             </header>
 
-            <div className="p-6 flex-1 overflow-y-auto">
+            <div className="p-6 pb-24 flex-1 overflow-y-auto">
                 {step === 'INPUT' && renderInput()}
                 {step === 'REVIEW' && renderReview()}
                 {step === 'PROCESSING' && renderProcessing()}
