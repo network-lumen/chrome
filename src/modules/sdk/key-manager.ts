@@ -190,7 +190,14 @@ export class KeyManager {
      * Helper to derive an address from a mnemonic
      */
     static async deriveAddress(mnemonic: string): Promise<string> {
-        const wallet = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic, { prefix: 'lmn' });
+        return this.deriveAddressWithPrefix(mnemonic, 'lmn');
+    }
+
+    /**
+     * Helper to derive an address from a mnemonic for a specific bech32 prefix
+     */
+    static async deriveAddressWithPrefix(mnemonic: string, prefix: string): Promise<string> {
+        const wallet = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic, { prefix });
         const accounts = await wallet.getAccounts();
         return accounts[0].address;
     }

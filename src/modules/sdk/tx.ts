@@ -1,6 +1,7 @@
 import { Buffer } from 'buffer';
 import { DirectSecp256k1HdWallet } from '@cosmjs/proto-signing';
 import { MsgSend } from 'cosmjs-types/cosmos/bank/v1beta1/tx';
+import { MsgTransfer } from 'cosmjs-types/ibc/applications/transfer/v1/tx';
 import { TxRaw, SignDoc, TxBody, AuthInfo, Fee } from 'cosmjs-types/cosmos/tx/v1beta1/tx';
 import { SignMode } from 'cosmjs-types/cosmos/tx/signing/v1beta1/signing';
 import { PubKey } from 'cosmjs-types/cosmos/crypto/secp256k1/keys';
@@ -15,7 +16,8 @@ import { NetworkManager } from './network';
 
 /* Config */
 const CHAIN_ID = "lumen";
-const GAS_LIMIT = BigInt(200000);
+const SEND_GAS_LIMIT = BigInt(200000);
+const IBC_TRANSFER_GAS_LIMIT = BigInt(350000);
 // DEFAULT_REST replaced by NetworkManager
 
 /* Helper: Hex/Base64 Decoder */
@@ -71,14 +73,23 @@ async function fetchAccountInfo(address: string, apiEndpoint?: string) {
     };
 }
 
-/* Main Function */
-export async function buildAndSignSendTx(
-    walletData: LumenWallet,
-    toAddress: string,
-    amountUlmn: string,
-    memo: string,
-    apiEndpoint?: string
-): Promise<{ txBytes: Uint8Array; endpoint: string }> {
+interface BuildAndSignTxOptions {
+    walletData: LumenWallet;
+    messages: Any[];
+    memo: string;
+    apiEndpoint?: string;
+    gasLimit: bigint;
+    feeAmount?: Array<{ denom: string; amount: string }>;
+}
+
+async function buildAndSignTx({
+    walletData,
+    messages,
+    memo,
+    apiEndpoint,
+    gasLimit,
+    feeAmount = []
+}: BuildAndSignTxOptions): Promise<{ txBytes: Uint8Array; endpoint: string }> {
 
     /* 1. Prepare ECDSA Wallet */
     const wallet = await DirectSecp256k1HdWallet.fromMnemonic(walletData.mnemonic, { prefix: 'lmn' });
@@ -128,20 +139,8 @@ export async function buildAndSignSendTx(
         throw new Error(`Invalid PQC Private Key Length: ${pqcPrivKey.length} (Expected 4000)`);
     }
 
-    /* 3. Create TxBody (Standard) */
-    const msgSend = MsgSend.encode({
-        fromAddress: walletData.address,
-        toAddress: toAddress,
-        amount: [{ denom: 'ulmn', amount: amountUlmn }]
-    }).finish();
-
-    const msgAny = Any.fromPartial({
-        typeUrl: '/cosmos.bank.v1beta1.MsgSend',
-        value: msgSend
-    });
-
     const txBody = TxBody.fromPartial({
-        messages: [msgAny],
+        messages,
         memo: memo
     });
     const txBodyBytes = TxBody.encode(txBody).finish();
@@ -158,7 +157,7 @@ export async function buildAndSignSendTx(
             modeInfo: { single: { mode: SignMode.SIGN_MODE_DIRECT } },
             sequence: sequence
         }],
-        fee: Fee.fromPartial({ amount: [], gasLimit: GAS_LIMIT })
+        fee: Fee.fromPartial({ amount: feeAmount, gasLimit })
     });
     const authInfoBytes = AuthInfo.encode(authInfo).finish();
 
@@ -234,6 +233,70 @@ export async function buildAndSignSendTx(
         txBytes: TxRaw.encode(txRaw).finish(),
         endpoint: endpointUsed
     };
+}
+
+/* Main Function */
+export async function buildAndSignSendTx(
+    walletData: LumenWallet,
+    toAddress: string,
+    amountUlmn: string,
+    memo: string,
+    apiEndpoint?: string
+): Promise<{ txBytes: Uint8Array; endpoint: string }> {
+    const msgSend = MsgSend.encode({
+        fromAddress: walletData.address,
+        toAddress,
+        amount: [{ denom: 'ulmn', amount: amountUlmn }]
+    }).finish();
+
+    const msgAny = Any.fromPartial({
+        typeUrl: '/cosmos.bank.v1beta1.MsgSend',
+        value: msgSend
+    });
+
+    return buildAndSignTx({
+        walletData,
+        messages: [msgAny],
+        memo,
+        apiEndpoint,
+        gasLimit: SEND_GAS_LIMIT
+    });
+}
+
+export async function buildAndSignIbcTransferTx(
+    walletData: LumenWallet,
+    toAddress: string,
+    amountUlmn: string,
+    memo: string,
+    sourceChannel: string,
+    sourcePort: string = 'transfer',
+    timeoutSeconds: number = 600,
+    apiEndpoint?: string
+): Promise<{ txBytes: Uint8Array; endpoint: string }> {
+    const timeoutTimestamp = BigInt(Date.now() + timeoutSeconds * 1000) * 1_000_000n;
+    const msgTransfer = MsgTransfer.encode(MsgTransfer.fromPartial({
+        sourcePort,
+        sourceChannel,
+        token: { denom: 'ulmn', amount: amountUlmn },
+        sender: walletData.address,
+        receiver: toAddress,
+        timeoutTimestamp,
+        memo
+    })).finish();
+
+    const msgAny = Any.fromPartial({
+        typeUrl: '/ibc.applications.transfer.v1.MsgTransfer',
+        value: msgTransfer
+    });
+
+    return buildAndSignTx({
+        walletData,
+        messages: [msgAny],
+        memo,
+        apiEndpoint,
+        gasLimit: IBC_TRANSFER_GAS_LIMIT,
+        feeAmount: [{ denom: 'ulmn', amount: '1000' }]
+    });
 }
 
 /* 3. Broadcaster */
