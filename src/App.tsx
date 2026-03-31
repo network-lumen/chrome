@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { WalletTab } from './components/WalletTab';
-import { Swap } from './components/swap/Swap';
 import { Unlock } from './components/onboarding/Unlock';
 import { WalletMenu } from './components/WalletMenu';
 import { Settings } from './components/Settings';
@@ -14,6 +13,7 @@ import { openExpandedView } from './utils/navigation';
 import { Send } from './components/send/Send';
 import { ApprovalModal } from './components/ApprovalModal';
 import type { LumenWallet } from './modules/sdk/key-manager';
+import { Trade } from './components/trade/Trade';
 
 const chromeApi = globalThis.chrome;
 const hasExtensionRuntime = !!chromeApi?.runtime?.id;
@@ -467,9 +467,10 @@ function App() {
                 )}
               </div>
             } />
-            <Route path="/swap" element={
-              activeWallet ? <Swap walletKeys={activeWallet} /> : <Navigate to="/" />
+            <Route path="/trade" element={
+              activeWallet ? <Trade walletKeys={activeWallet} /> : <Navigate to="/" />
             } />
+            <Route path="/swap" element={<Navigate to="/trade" replace />} />
             <Route path="/send" element={
               activeWallet ? <Send activeKeys={activeWallet} onBack={() => navigate('/dashboard')} /> : <Navigate to="/" />
             } />
@@ -498,11 +499,11 @@ function App() {
             <span className="text-[10px] font-semibold">Wallet</span>
           </button>
           <button
-            disabled
-            className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all text-gray-700/50 cursor-not-allowed opacity-40"
+            onClick={() => navigate('/trade')}
+            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all duration-300 ${location.pathname === '/trade' || location.pathname === '/swap' ? 'text-primary scale-110' : 'text-gray-500 hover:text-gray-300 hover:scale-105'} `}
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-            <span className="text-[10px] font-semibold">Swap</span>
+            <span className="text-[10px] font-semibold">Trade</span>
           </button>
           <button
             disabled
