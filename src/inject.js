@@ -191,7 +191,7 @@
    * Main interface that dApps use to interact with the wallet
    */
   const lumenProvider = {
-    version: '1.0.2',
+    version: '1.0.5',
     /**
      * EIP-1193 Standard Method
      * @param {Object} args - Request arguments with method and params
