@@ -7,8 +7,7 @@ export const REQUIRED_HOST_PERMISSIONS = [
   'https://rpc-lumen.onenov.xyz/*',
   'https://lumen-api.node9x.com/*',
   'https://api.lumen.chaintools.tech/*',
-  'https://lumen-mainnet-api.mekonglabs.com/*',
-  'https://api-lumen.winnode.xyz/*'
+  'https://lumen-mainnet-api.mekonglabs.com/*'
 ];
 
 export const originToPattern = (origin: string): string | null => {

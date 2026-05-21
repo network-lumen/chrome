@@ -165,7 +165,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
             setValidators(formattedValidators);
 
             // Also fetch wallet balance for validation
-            const res = await fetch(`https://api-lumen.winnode.xyz/cosmos/bank/v1beta1/balances/${walletKeys.address}`);
+            const res = await fetch(`https://rest.cosmos.directory/lumen/cosmos/bank/v1beta1/balances/${walletKeys.address}`);
             if (res.ok) {
                 const data = await res.json();
                 const bal = data.balances.find((b: any) => b.denom === 'ulmn')?.amount || '0';

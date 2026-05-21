@@ -6,9 +6,40 @@ import { SignMode } from 'cosmjs-types/cosmos/tx/signing/v1beta1/signing';
 import { PubKey } from 'cosmjs-types/cosmos/crypto/secp256k1/keys';
 import { Any } from 'cosmjs-types/google/protobuf/any';
 import type { LumenWallet } from '../../types/wallet';
+import { REST_PROVIDERS } from './network';
 
 const CHAIN_ID = "lumen";
-const DEFAULT_REST = "https://api-lumen.winnode.xyz";
+const REST_TIMEOUT_MS = 4000;
+
+const restCandidates = (apiEndpoint?: string): string[] => {
+    if (apiEndpoint) return [apiEndpoint.replace(/\/$/, '')];
+    return Array.from(new Set(REST_PROVIDERS.map(p => p.address.replace(/\/$/, ''))));
+};
+
+const fetchJson = async (base: string, path: string, init?: RequestInit): Promise<any> => {
+    const res = await fetch(`${base}${path}`, {
+        ...init,
+        signal: AbortSignal.timeout(REST_TIMEOUT_MS)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+};
+
+const fetchJsonFromAnyRest = async (
+    path: string,
+    apiEndpoint?: string,
+    init?: RequestInit
+): Promise<{ data: any; endpoint: string }> => {
+    let lastError: unknown;
+    for (const endpoint of restCandidates(apiEndpoint)) {
+        try {
+            return { data: await fetchJson(endpoint, path, init), endpoint };
+        } catch (err) {
+            lastError = err;
+        }
+    }
+    throw lastError instanceof Error ? lastError : new Error('All REST providers failed');
+};
 
 /**
  * Helper: Hex/Base64 Decoder
@@ -64,12 +95,9 @@ export interface LinkStatus {
 /**
  * Fetches chain parameters for PQC account linking
  */
-export async function getLinkRequirements(apiEndpoint: string = DEFAULT_REST): Promise<LinkRequirements> {
+export async function getLinkRequirements(apiEndpoint?: string): Promise<LinkRequirements> {
     try {
-        const res = await fetch(`${apiEndpoint}/lumen/pqc/v1/params`);
-        if (!res.ok) throw new Error(`Failed to fetch params: ${res.status}`);
-
-        const data = await res.json();
+        const { data } = await fetchJsonFromAnyRest('/lumen/pqc/v1/params', apiEndpoint);
         return {
             minBalance: data.params?.min_balance_for_link?.amount || '1000',
             powDifficultyBits: data.params?.pow_difficulty_bits || 21
@@ -84,12 +112,9 @@ export async function getLinkRequirements(apiEndpoint: string = DEFAULT_REST): P
 /**
  * Checks if account has sufficient balance for linking
  */
-export async function checkBalance(address: string, minBalance: string, apiEndpoint: string = DEFAULT_REST): Promise<boolean> {
+export async function checkBalance(address: string, minBalance: string, apiEndpoint?: string): Promise<boolean> {
     try {
-        const res = await fetch(`${apiEndpoint}/cosmos/bank/v1beta1/balances/${address}`);
-        if (!res.ok) return false;
-
-        const data = await res.json();
+        const { data } = await fetchJsonFromAnyRest(`/cosmos/bank/v1beta1/balances/${address}`, apiEndpoint);
         const ulmnBalance = data.balances?.find((b: any) => b.denom === 'ulmn');
         const balance = parseInt(ulmnBalance?.amount || '0');
         const required = parseInt(minBalance);
@@ -135,7 +160,7 @@ export async function computeLinkPowNonce(
 export async function linkPqcAccount(
     wallet: LumenWallet,
     powNonceHex: string,
-    apiEndpoint: string = DEFAULT_REST
+    apiEndpoint?: string
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
         /* 1. Create signer from mnemonic */
@@ -143,12 +168,10 @@ export async function linkPqcAccount(
         const accounts = await signer.getAccounts();
 
         /* 2. Get account info */
-        const accountRes = await fetch(`${apiEndpoint}/cosmos/auth/v1beta1/accounts/${wallet.address}`);
-        if (!accountRes.ok) {
-            return { success: false, error: 'Failed to fetch account info' };
-        }
-
-        const accountData = await accountRes.json();
+        const { data: accountData, endpoint } = await fetchJsonFromAnyRest(
+            `/cosmos/auth/v1beta1/accounts/${wallet.address}`,
+            apiEndpoint
+        );
         const account = accountData.account;
         const sequence = BigInt(account.sequence || '0');
         const accountNumber = BigInt(account.account_number || '0');
@@ -316,9 +339,10 @@ export async function linkPqcAccount(
         const txBytesBase64 = Buffer.from(txBytes).toString('base64');
 
         /* 8. Broadcast */
-        const broadcastRes = await fetch(`${apiEndpoint}/cosmos/tx/v1beta1/txs`, {
+        const broadcastRes = await fetch(`${endpoint}/cosmos/tx/v1beta1/txs`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(REST_TIMEOUT_MS),
             body: JSON.stringify({
                 tx_bytes: txBytesBase64,
                 mode: 'BROADCAST_MODE_SYNC'
@@ -349,18 +373,11 @@ export async function linkPqcAccount(
  */
 export async function checkPqcAccountStatus(
     address: string,
-    apiEndpoint: string = DEFAULT_REST
+    apiEndpoint?: string
 ): Promise<LinkStatus> {
     try {
         /* Try to fetch PQC account info from chain */
-        const res = await fetch(`${apiEndpoint}/lumen/pqc/v1/accounts/${address}`);
-
-        if (!res.ok) {
-            /* Account not found or not linked */
-            return { isLinked: false };
-        }
-
-        const data = await res.json();
+        const { data } = await fetchJsonFromAnyRest(`/lumen/pqc/v1/accounts/${address}`, apiEndpoint);
         if (data.account?.pqc_public_key) {
             return {
                 isLinked: true,

@@ -25,7 +25,7 @@ interface Proposal {
     vetoVotesRaw: string;
 }
 
-const API_ENDPOINT = 'https://api-lumen.winnode.xyz';
+const API_ENDPOINT = 'https://rest.cosmos.directory/lumen';
 
 export const Governance: React.FC<GovernanceProps> = ({ walletKeys, onBack }) => {
     const [proposals, setProposals] = useState<Proposal[]>([]);

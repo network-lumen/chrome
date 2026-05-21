@@ -19,14 +19,15 @@ const PQC_PRIVATE_KEY_BYTES = 4000;
 const defaultRegistry = new Registry(defaultRegistryTypes);
 const defaultAminoTypes = new AminoTypes(createDefaultAminoConverters());
 const REQUIRED_HOST_PERMISSIONS = [
+    'https://rpc.cosmos.directory/lumen/*',
+    'https://rest.cosmos.directory/lumen/*',
     'https://rpc.lumen.chaintools.tech/*',
     'https://lumen.blocksync.me/*',
     'https://lumen-mainnet-rpc.mekonglabs.com/*',
     'https://rpc-lumen.onenov.xyz/*',
     'https://lumen-api.node9x.com/*',
     'https://api.lumen.chaintools.tech/*',
-    'https://lumen-mainnet-api.mekonglabs.com/*',
-    'https://api-lumen.winnode.xyz/*'
+    'https://lumen-mainnet-api.mekonglabs.com/*'
 ];
 
 const ensureUint8Array = (input: string | Uint8Array | undefined): Uint8Array => {
