@@ -20,7 +20,6 @@ export const REST_PROVIDERS: Endpoint[] = [
     { address: "https://lumen-api.node9x.com", provider: "node9x" },
     { address: "https://api.lumen.chaintools.tech", provider: "ChainTools" },
     { address: "https://lumen-mainnet-api.mekonglabs.com", provider: "MekongLabs" },
-    { address: "https://api-lumen.winnode.xyz", provider: "Winnode" },
 ];
 
 const CHAIN_ID = "lumen";

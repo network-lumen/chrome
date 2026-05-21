@@ -99312,7 +99312,7 @@ Please pass a 2048 word array explicitly.`;
     });
   };
   var ya = mB(), jN = m4(), KN = xR(), fB = ah();
-  const t7 = "lumen", FB = "https://api-lumen.winnode.xyz", Vm = (i) => {
+  const t7 = "lumen", FB = "https://rest.cosmos.directory/lumen", Vm = (i) => {
     if (!i) return new Uint8Array(0);
     if (typeof i == "string") {
       const u = i.trim();
@@ -99601,7 +99601,7 @@ Please pass a 2048 word array explicitly.`;
               linkTxHash: ne
             }), h("success"), I("verifying");
             try {
-              const te = "https://api-lumen.winnode.xyz";
+              const te = "https://rest.cosmos.directory/lumen";
               await new Promise((F) => setTimeout(F, 2e3));
               const J = await fetch(`${te}/api/transaction?chain=lumen&hash=${ne}`);
               if (J.ok) {
@@ -99822,7 +99822,7 @@ Please pass a 2048 word array explicitly.`;
           d(true);
           w(null);
           
-          const apiUrl = "https://api-lumen.winnode.xyz";
+          const apiUrl = "https://rest.cosmos.directory/lumen";
           
           let E = { tx_responses: [] };
           let I = { tx_responses: [] };
@@ -100082,7 +100082,7 @@ Please pass a 2048 word array explicitly.`;
       const tt = async () => {
         var _a2;
         try {
-          const ke = await fetch(`https://api-lumen.winnode.xyz/cosmos/bank/v1beta1/balances/${u.address}`);
+          const ke = await fetch(`https://rest.cosmos.directory/lumen/cosmos/bank/v1beta1/balances/${u.address}`);
           if (!ke.ok) throw new Error("Failed to fetch balance");
           const Qt = (_a2 = (await ke.json()).balances) == null ? void 0 : _a2.find((Zt) => Zt.denom === "ulmn");
           if (Qt) {
@@ -100861,7 +100861,7 @@ Please pass a 2048 word array explicitly.`;
     }
   ], kV = (i) => YN.some((u) => u.id === i);
   var SV = FR();
-  const i7 = "lumen", CV = BigInt(2e5), sk = "https://api-lumen.winnode.xyz", o7 = (i) => {
+  const i7 = "lumen", CV = BigInt(2e5), sk = "https://rest.cosmos.directory/lumen", o7 = (i) => {
     if (!i) return new Uint8Array(0);
     if (typeof i == "string") {
       const u = i.trim();
@@ -102415,7 +102415,7 @@ Please pass a 2048 word array explicitly.`;
         var _a;
         try {
           Y(true);
-          const F = await fetch(`https://api-lumen.winnode.xyz/cosmos/bank/v1beta1/balances/${i.address}`);
+          const F = await fetch(`https://rest.cosmos.directory/lumen/cosmos/bank/v1beta1/balances/${i.address}`);
           if (!F.ok) throw new Error("Failed to fetch balance");
           const L = (_a = (await F.json()).balances) == null ? void 0 : _a.find((U) => U.denom === "ulmn");
           L && H(parseFloat(L.amount) / 1e6);

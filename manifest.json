@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lumen Wallet",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Non-custodial Lumen Chain wallet with Swap v1 support.",
   "action": {
     "default_popup": "index.html",
@@ -13,14 +13,15 @@
     "contextMenus"
   ],
   "host_permissions": [
+    "https://rpc.cosmos.directory/lumen/*",
+    "https://rest.cosmos.directory/lumen/*",
     "https://rpc.lumen.chaintools.tech/*",
     "https://lumen.blocksync.me/*",
     "https://lumen-mainnet-rpc.mekonglabs.com/*",
     "https://rpc-lumen.onenov.xyz/*",
     "https://lumen-api.node9x.com/*",
     "https://api.lumen.chaintools.tech/*",
-    "https://lumen-mainnet-api.mekonglabs.com/*",
-    "https://api-lumen.winnode.xyz/*"
+    "https://lumen-mainnet-api.mekonglabs.com/*"
   ],
   "side_panel": {
     "default_path": "index.html"

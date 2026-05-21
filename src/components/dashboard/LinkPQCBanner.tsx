@@ -206,20 +206,21 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
 
                     /* Verify Transaction */
                     try {
-                        const API_BASE = "https://api-lumen.winnode.xyz";
+                        const API_BASE = "https://rest.cosmos.directory/lumen";
                         /* Wait a simplified 2s for propagation before checking */
                         await new Promise(r => setTimeout(r, 2000));
 
-                        const res = await fetch(`${API_BASE}/api/transaction?chain=lumen&hash=${newTxHash}`);
+                        const res = await fetch(`${API_BASE}/cosmos/tx/v1beta1/txs/${newTxHash}`);
                         if (res.ok) {
                             const data = await res.json();
+                            const txResponse = data.tx_response;
 
-                            if (data.rawLog) {
-                                setVerificationMessage(data.rawLog);
+                            if (txResponse?.raw_log) {
+                                setVerificationMessage(txResponse.raw_log);
                             }
 
                             /* Check for explicit failure in API response */
-                            if (data.success === false || (data.code !== undefined && data.code !== 0)) {
+                            if (txResponse?.code !== undefined && txResponse.code !== 0) {
                                 setVerificationStatus('failed');
                             } else {
                                 setVerificationStatus('verified');
