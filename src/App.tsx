@@ -7,7 +7,6 @@ import { Settings } from './components/Settings';
 import { BackupModal } from './components/dashboard/BackupModal';
 import { LinkPQCBanner } from './components/dashboard/LinkPQCBanner';
 import { Staking } from './components/staking/Staking';
-import { Governance } from './components/governance/Governance';
 import { VaultManager } from './modules/vault/vault';
 import { openExpandedView } from './utils/navigation';
 import { Send } from './components/send/Send';
@@ -491,9 +490,6 @@ function App() {
             } />
             <Route path="/stake" element={
               activeWallet ? <Staking walletKeys={activeWallet} onBack={() => navigate('/dashboard')} /> : <Navigate to="/" />
-            } />
-            <Route path="/governance" element={
-              activeWallet ? <Governance walletKeys={activeWallet} onBack={() => navigate('/dashboard')} /> : <Navigate to="/" />
             } />
             <Route path="/settings" element={
               <Settings onBack={() => navigate('/dashboard')} />

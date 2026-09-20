@@ -45,8 +45,10 @@ all votable) with the shipped values as fallback.
 Two more numbers from the same params block:
 
 - `min_send_ulmn` (1000): the chain refuses a smaller transfer.
-- `min_voting_stake_ulmn` (1 LMN, DAO intends 5): an account below this cannot
-  vote. Governance checks it before enabling the button.
+`min_voting_stake_ulmn` exists on the chain but is not read here: the wallet
+does not vote. Governance was removed deliberately — this is a wallet, it moves
+funds and stakes them, and voting belongs elsewhere. Don't add it back without
+asking.
 
 The **transfer tax** (`tx_tax_rate`, 1%) is charged to the *recipient*
 (`app/send_tax_calc.go`), not the sender. Sender pays `amount + fee`, recipient

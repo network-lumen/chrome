@@ -22,8 +22,6 @@ export interface ChainFeeParams {
     redelegateFeeUlmn: bigint;
     /** Smallest amount a transfer may carry. */
     minSendUlmn: bigint;
-    /** Delegated stake an account needs before its vote is counted. */
-    minVotingStakeUlmn: bigint;
     /** Transfer tax rate, charged to the *recipient*, as a fraction (0.01 = 1%). */
     txTaxRate: number;
     /** False when these are the fallbacks rather than what the chain reported. */
@@ -35,7 +33,6 @@ export const FALLBACK_FEE_PARAMS: ChainFeeParams = {
     delegateFeeUlmn: 1000n,
     redelegateFeeUlmn: 1000n,
     minSendUlmn: 1000n,
-    minVotingStakeUlmn: 1_000_000n,
     txTaxRate: 0.01,
     fromChain: false
 };
@@ -82,7 +79,6 @@ export async function getChainFeeParams(forceRefresh = false): Promise<ChainFeeP
                 delegateFeeUlmn: toBigInt(params.delegate_fee_ulmn, FALLBACK_FEE_PARAMS.delegateFeeUlmn),
                 redelegateFeeUlmn: toBigInt(params.redelegate_fee_ulmn, FALLBACK_FEE_PARAMS.redelegateFeeUlmn),
                 minSendUlmn: toBigInt(params.min_send_ulmn, FALLBACK_FEE_PARAMS.minSendUlmn),
-                minVotingStakeUlmn: toBigInt(params.min_voting_stake_ulmn, FALLBACK_FEE_PARAMS.minVotingStakeUlmn),
                 txTaxRate: Number.isFinite(parsedRate) ? parsedRate : FALLBACK_FEE_PARAMS.txTaxRate,
                 fromChain: true
             };

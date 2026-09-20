@@ -1,5 +1,5 @@
 import React from 'react';
-import { Send, QrCode, Clock, Coins, Vote } from 'lucide-react';
+import { Send, QrCode, Clock, Coins } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface ActionBarProps {
@@ -30,12 +30,6 @@ export const ActionBar: React.FC<ActionBarProps> = ({ onReceive, onHistory }) =>
             active: true
         },
         {
-            label: 'Vote',
-            icon: <Vote size={20} />,
-            onClick: () => navigate('/governance'),
-            active: true
-        },
-        {
             label: 'History',
             icon: <Clock size={20} />,
             onClick: onHistory,
@@ -44,7 +38,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({ onReceive, onHistory }) =>
     ];
 
     return (
-        <div className="grid grid-cols-5 gap-3 px-4 py-3">
+        <div className="grid grid-cols-4 gap-3 px-4 py-3">
             {buttons.map((btn, idx) => (
                 <div
                     key={idx}
