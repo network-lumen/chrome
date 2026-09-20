@@ -122,6 +122,35 @@ in `index.html`; it has to be the first thing `main.tsx` does.
 `pb-24` belongs on a scrolling container (runway at the end of the list), never
 on a `shrink-0` block — there it is dead space that squeezes the content above.
 
+## Locking
+
+The vault key is an AES-GCM `CryptoKey` kept in **IndexedDB**, not in
+`chrome.storage.session`. That is deliberate — a non-extractable CryptoKey is
+not JSON, so storage.session cannot hold it, while IndexedDB structured-clones
+it and the raw bytes never become readable to script.
+
+The consequence is that the key is **durable**: it survives the popup closing,
+the service worker being evicted, and the browser restarting. Only
+`clearSession()` removes it. `isLocked` in React is a render flag; it hides the
+UI and revokes nothing.
+
+Expiry is a timestamp (`lastActiveAt` in `chrome.storage.session`) compared
+against the configured timeout. `isSessionExpired()` only *reports* — the one
+function that enforces is `VaultManager.lockIfExpired()`, which is reached from:
+
+1. **the background `auto-lock` alarm**, every minute — the only check that runs
+   with every view closed. One minute is Chrome's floor for alarm periods, so
+   the lock can overshoot the configured timeout by up to that.
+2. **`chrome.runtime.onStartup`** — a browser restart clears storage.session and
+   with it `lastActiveAt`, but not the IndexedDB key, so the key from the
+   previous browser session has to be dropped explicitly.
+3. **`checkSession()` in App.tsx**, before the first `getWallets()`.
+4. the 5s poll in App.tsx, while a view is open.
+
+Order matters in (3): `getWallets()` succeeds whenever the key is on disk and
+consults no timeout, so anything that reads the vault before `lockIfExpired()`
+has already bypassed the lock.
+
 ## Conventions
 
 - Comments explain *why*, in full sentences. The repo calls this the "Strict
@@ -134,8 +163,6 @@ on a `shrink-0` block — there it is dead space that squeezes the content above
 
 ## Known gaps
 
-- **APR is hardcoded to `12.5%`** in `Staking.tsx` (two places). It is a
-  placeholder, not a computed figure.
 - **The PoW progress bar never moves**: `computeLinkPowNonce` passes an
   `onProgress` callback, but `PowOptions` has no such field in any SDK version.
   Harmless while `pow_difficulty_bits` is 0 and mining returns instantly.

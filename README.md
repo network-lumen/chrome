@@ -79,7 +79,4 @@ Contributions are welcome. Please ensure all pull requests follow the **Strict C
 
 ---
 
-## Creator & Maintainer
-rikijoniiskandar — https://github.com/rikijoniiskandar
-
 © 2026 Lumen Network Contributors.
