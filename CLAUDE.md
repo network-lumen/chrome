@@ -119,6 +119,25 @@ what clipped buttons and pushed them under the footer.
 CSP is `script-src 'self'`, so the marker cannot be applied by an inline script
 in `index.html`; it has to be the first thing `main.tsx` does.
 
+### There is a second stylesheet, and it wins
+
+`assets/theme.css` is pulled in by a raw `<link>` in `index.html`, separately
+from the Tailwind entry in `src/index.css`. Vite bundles it into the same
+`main-*.css`, after the utilities, and almost every rule in it carries
+`!important` — so it beats every Tailwind class on the element it targets, and
+reading `src/index.css` alone tells you nothing about the layout you get.
+
+It overrides bare element selectors (`footer`, `header`, `main`, `#root`,
+`#root > div`, `body`), including `overflow: visible !important` on several
+containers, which defeats the `overflow: hidden` set in `index.css`.
+
+**When a layout does something the JSX and its Tailwind classes cannot explain,
+look here first.** The footer was `position: fixed; left: 0; right: 0` in this
+file: it escaped the `max-w-md` column to span the whole window, and reserved no
+space, so `main` ran underneath and swallowed whatever sat at the bottom of a
+screen. No flex sizing in React could compensate, because an out-of-flow element
+gives the column nothing to size around.
+
 `pb-24` belongs on a scrolling container (runway at the end of the list), never
 on a `shrink-0` block — there it is dead space that squeezes the content above.
 

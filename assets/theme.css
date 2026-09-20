@@ -47,16 +47,24 @@ header {
   overflow: visible !important;
 }
 
-/* Footer/Bottom Navigation - ALWAYS visible at bottom */
+/* Footer/Bottom Navigation - last row of the app's flex column.
+ *
+ * This used to be `position: fixed; left: 0; right: 0`, which took it out of
+ * the flow and anchored it to the viewport. Two things followed, and both were
+ * visible: it spanned the whole window instead of the app's max-w-md column,
+ * and — because an out-of-flow element reserves no space — `main` ran on
+ * underneath it, hiding whatever sat at the bottom of a screen. That is what
+ * buried the staking action button, and no amount of flex sizing in the React
+ * tree could fix it, because the column had nothing to size around.
+ *
+ * The app root is already a flex column with the footer as a shrink-0 row, so
+ * being "always visible at the bottom" is what the layout does on its own. The
+ * fixed positioning was a workaround for the popup having no declared size;
+ * that is fixed properly in index.css now.
+ */
 footer {
   flex-shrink: 0 !important;
-  position: fixed !important;
-  bottom: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  z-index: 100 !important;
   min-height: 56px !important;
-  height: 56px !important;
   background: var(--surface) !important;
   border-top: 1px solid var(--border) !important;
   display: flex !important;
