@@ -1,0 +1,147 @@
+# Lumen Wallet Extension — working notes
+
+Chrome MV3 extension (React 19 + Vite + Tailwind 4) for the Lumen chain.
+Non-custodial, dual-signature: every transaction carries a secp256k1 signature
+*and* a Dilithium3 (PQC) one.
+
+## Chain coupling
+
+The wallet talks to a chain that moves. Two version numbers have to agree:
+
+| | version |
+|---|---|
+| chain (`~/Desktop/lumen/blockchain`) | **v2.0.0** |
+| `@lumen-chain/sdk` | **2.0.0** |
+
+The SDK is published to npm; its source lives in
+`~/Desktop/lumen/integrations/npm/sdk`. When the chain releases, diff
+`integrations/npm/sdk/src/pqc/` against what the wallet calls — most SDK calls
+sit behind `@ts-ignore`, so a changed signature compiles cleanly and fails at
+runtime. That is exactly how the v2.0.0 proof-of-work change went unnoticed.
+
+### Transactions are gasless, but messages are priced
+
+`app/ante_zero_fee.go` refuses a fee on an ordinary transaction and *requires*
+a positive one on an IBC transfer. So `Fee.amount` stays `[]` everywhere except
+`buildAndSignIbcTransferTx`. Don't "fix" that.
+
+Separately, since v2.0.0 `app/ante_message_fee.go` charges per message, taken
+from the account balance before the message runs:
+
+| message | param | ships at |
+|---|---|---|
+| `MsgSend`, `MsgTransfer` | `transfer_fee_ulmn` | 1000 ulmn |
+| `MsgDelegate` | `delegate_fee_ulmn` | 1000 ulmn |
+| `MsgBeginRedelegate` | `redelegate_fee_ulmn` | 1000 ulmn |
+| `MsgSetWithdrawAddress` | `set_withdraw_addr_fee_ulmn` | 1000 ulmn |
+
+`MsgWithdrawDelegatorReward`, `MsgUndelegate` and `MsgVote` are **not** priced.
+
+Consequence for the UI: "MAX" is never the whole balance for a priced message —
+the ante needs the fee on top, and offering the balance produces a transaction
+the chain refuses. `src/modules/sdk/chain-params.ts` reads these live (they are
+all votable) with the shipped values as fallback.
+
+Two more numbers from the same params block:
+
+- `min_send_ulmn` (1000): the chain refuses a smaller transfer.
+- `min_voting_stake_ulmn` (1 LMN, DAO intends 5): an account below this cannot
+  vote. Governance checks it before enabling the button.
+
+The **transfer tax** (`tx_tax_rate`, 1%) is charged to the *recipient*
+(`app/send_tax_calc.go`), not the sender. Sender pays `amount + fee`, recipient
+nets `amount × 0.99`. The confirm screen shows both.
+
+### Other v2.0.0 constraints
+
+- **64 messages per transaction** (`app/ante_max_messages.go`). `claimAllRewards`
+  chunks on this.
+- **PoW link digest changed** to `sha256(creator || "|" || pubKey || nonce)`.
+  `computePowNonce` now takes the bech32 address first. `pow_difficulty_bits`
+  ships at **0** on purpose so nonces mined under the old formula stay valid —
+  read it with `??`, never `||`, or a deliberate 0 becomes 21 and the wallet
+  mines a proof of work nobody asked for.
+- **Blocked messages** the wallet must never build:
+  `MsgCancelUnbondingDelegation`, `MsgFundCommunityPool`,
+  `MsgDepositValidatorRewardsPool`, `MsgSubmitEvidence`.
+- **No shared custody**: `x/authz`, `x/group`, `x/feegrant` are not wired, and a
+  multisig account can receive funds but never move them.
+
+## Broadcasting
+
+`broadcastTx` uses `BROADCAST_MODE_SYNC`, which returns when the transaction
+passes CheckTx — *before* it is in a block. Refreshing on that return reads the
+state the transaction was meant to change, which is why confirmations used to
+look like they had done nothing.
+
+Always follow a broadcast with `waitForTxCommit(hash)` before refreshing or
+before signing the next transaction. It returns `null` on timeout, which means
+"still pending", not "failed" — say so in the toast rather than claiming success.
+
+Several transactions in a row share an account sequence, so they must be
+committed one at a time; parallel broadcast gets the second rejected.
+
+## Networking
+
+Everything goes through `NetworkManager` (`src/modules/sdk/network.ts`). It
+races the REST providers on height and latency and caches the winner for five
+minutes.
+
+Never hardcode an endpoint in a component or module — several did, and each one
+kept polling `rest.cosmos.directory` whatever the user had selected in settings
+and whatever the health check had found. That is most of what "the balance/
+history doesn't refresh" turned out to be.
+
+- `getRestEndpoint()` — async, may wait for the health race.
+- `getQuickRestEndpoint()` — sync, returns the current choice and refreshes in
+  the background. For polls and tight loops.
+
+Any new host also needs an entry in `manifest.json` `host_permissions` **and**
+in `src/permissions.ts`.
+
+## Views
+
+One `index.html` serves three contexts, told apart by a `?view=` marker that
+`main.tsx` copies onto `document.documentElement.dataset.view` before first
+paint:
+
+| context | URL | size |
+|---|---|---|
+| popup | `index.html` | fixed 400×600 in CSS |
+| side panel | `index.html?view=panel` | fills its container |
+| expanded tab | `index.html?view=tab` | fills the tab |
+
+The popup **must** declare its own size: Chrome sizes a popup to its content and
+caps it at 800×600, so a page whose height resolves through percentages of an
+unsized root collapses to whatever the content happens to measure — which is
+what clipped buttons and pushed them under the footer.
+
+CSP is `script-src 'self'`, so the marker cannot be applied by an inline script
+in `index.html`; it has to be the first thing `main.tsx` does.
+
+`pb-24` belongs on a scrolling container (runway at the end of the list), never
+on a `shrink-0` block — there it is dead space that squeezes the content above.
+
+## Conventions
+
+- Comments explain *why*, in full sentences. The repo calls this the "Strict
+  Commenting Style" and the README asks PRs to follow it.
+- `npm run build` runs `tsc -b` first; it must stay clean.
+- `npx eslint src/` currently reports ~260 pre-existing errors, mostly
+  `no-explicit-any`. Don't add to the pile; fixing the rest is its own task.
+- Release zips (`chrome-extension.*.zip`) are gitignored — build artifacts, not
+  versioned files.
+
+## Known gaps
+
+- **APR is hardcoded to `12.5%`** in `Staking.tsx` (two places). It is a
+  placeholder, not a computed figure.
+- **The PoW progress bar never moves**: `computeLinkPowNonce` passes an
+  `onProgress` callback, but `PowOptions` has no such field in any SDK version.
+  Harmless while `pow_difficulty_bits` is 0 and mining returns instantly.
+- **`createKeyPair('dilithium3')`** passes an argument the 2.0.0 signature no
+  longer takes. Ignored at runtime, but it will not survive a stricter build.
+- **`max_entries`** bounds how many unbondings a delegator may have in flight;
+  the wallet neither checks it nor explains the refusal.
+- **Unbonding period is described as "21 days on Cosmos networks"** in the UI
+  rather than read from the chain's `unbonding_time`.
