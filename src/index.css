@@ -68,6 +68,17 @@ html, body {
   overflow: hidden;
 }
 
+/* The popup has to state its own size: Chrome sizes a popup to its content and
+   caps it at 800x600, so a page whose height resolves through percentages of an
+   unsized root collapses to whatever the content happens to measure. 400x600 is
+   the full height Chrome allows, which is what keeps the footer and the buttons
+   above it on screen. The side panel and the expanded tab get a container with
+   a real size, so they fill it. */
+html[data-view='popup'], html[data-view='popup'] body {
+  width: 400px;
+  height: 600px;
+}
+
 body {
   @apply text-foreground antialiased font-sans;
   background-color: var(--color-background);

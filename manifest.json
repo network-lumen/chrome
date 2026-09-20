@@ -24,7 +24,7 @@
     "https://lumen-mainnet-api.mekonglabs.com/*"
   ],
   "side_panel": {
-    "default_path": "index.html"
+    "default_path": "index.html?view=panel"
   },
   "background": {
     "service_worker": "background.js",
