@@ -462,6 +462,7 @@ function App() {
                   onCancel={() => { }}
                   showLinkModal={false}
                   onCloseLinkModal={() => setIsLinkModalOpen(false)}
+                  onOpenLinkModal={() => setIsLinkModalOpen(true)}
                 />
               ) : <Navigate to="/" />
             } />

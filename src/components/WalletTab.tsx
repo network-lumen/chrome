@@ -10,8 +10,10 @@ import { ImportWalletAdvanced } from './onboarding/ImportWalletAdvanced';
 import { VaultManager } from '../modules/vault/vault';
 import { ActionBar } from './dashboard/ActionBar';
 import { NetworkManager } from '../modules/sdk/network';
+import { ShieldAlert } from 'lucide-react';
 import { ReceiveModal } from './dashboard/ReceiveModal';
 import { LinkPQCBanner } from './dashboard/LinkPQCBanner';
+import { checkPqcAccountStatus } from '../modules/sdk/link-pqc';
 import { HistoryModal } from './history/HistoryModal';
 import { HistoryManager } from '../modules/history/history';
 import {
@@ -35,9 +37,10 @@ interface WalletTabProps {
     onCancel?: () => void;
     showLinkModal?: boolean;
     onCloseLinkModal?: () => void;
+    onOpenLinkModal?: () => void;
 }
 
-export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys, isAdding, onCancel, showLinkModal, onCloseLinkModal }) => {
+export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys, isAdding, onCancel, showLinkModal, onCloseLinkModal, onOpenLinkModal }) => {
     const navigate = useNavigate();
     /* Flows: 'welcome' -> 'create-method' -> 'mnemonic-display' -> 'mnemonic-verify' -> 'set-password' -> DONE */
     /* Or: 'welcome' -> 'import' -> 'set-password' -> DONE */
@@ -74,6 +77,42 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
     const [assetRowsError, setAssetRowsError] = useState<string | null>(null);
     const assetRequestRef = React.useRef(0);
 
+    /* Whether this account has a Dilithium key registered on chain.
+     *
+     * `null` means "not known yet" — the badge shows nothing rather than
+     * guessing, because both guesses are wrong in a way the user would act on:
+     * claiming "Secured" on an unlinked account is a lie about what protects
+     * their funds, and prompting to link an account that is already linked
+     * sends them into a flow that has nothing to do.
+     *
+     * The wallet's own `linked` flag is trusted as a positive, but the chain is
+     * the authority: an account linked from the CLI or another device carries
+     * no local flag. */
+    const [isPqcLinked, setIsPqcLinked] = React.useState<boolean | null>(null);
+
+    /* Kept beside the formatted `balance` rather than parsed back out of it:
+       that string is grouped and rounded for display. State, not the existing
+       ref, because this drives what the badge renders. */
+    const [balanceUlmn, setBalanceUlmn] = useState('0');
+    const hasFunds = Number(balanceUlmn) > 0;
+
+    React.useEffect(() => {
+        if (!activeKeys?.address) return;
+
+        if (activeKeys.linked || activeKeys.linkTxHash) {
+            setIsPqcLinked(true);
+            return;
+        }
+
+        let cancelled = false;
+        setIsPqcLinked(null);
+        void checkPqcAccountStatus(activeKeys.address)
+            .then((status) => { if (!cancelled) setIsPqcLinked(status.isLinked); })
+            .catch(() => { if (!cancelled) setIsPqcLinked(null); });
+
+        return () => { cancelled = true; };
+    }, [activeKeys?.address, activeKeys?.linked, activeKeys?.linkTxHash]);
+
     /* Fetch Balance Effect */
     React.useEffect(() => {
         if (!activeKeys) return;
@@ -91,6 +130,7 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                     const newBalRaw = data.balances.find((b: any) => b.denom === 'ulmn')?.amount || '0';
                     const newBalFormatted = (parseFloat(newBalRaw) / 1_000_000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 });
                     setBalance(newBalFormatted);
+                    setBalanceUlmn(newBalRaw);
 
                     // Check for increase -> Force Scan
                     const oldBalVal = parseFloat(lastBalanceRef.current);
@@ -354,10 +394,38 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                                         )}
                                     </button>
                                 </div>
-                                <div className="flex items-center gap-1.5 bg-green-500/10 px-2.5 py-1 rounded-full border border-green-500/20 backdrop-blur-md">
-                                    <div className="w-1 h-1 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,1)] animate-pulse" />
-                                    <span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Secured</span>
-                                </div>
+                                {/* The badge used to read "Secured" unconditionally, including on
+                                    a fresh account with no key registered on chain — the one case
+                                    where it matters, and the one where it was false. It now states
+                                    the account's actual protection, and when there is none it is
+                                    the shortcut to setting it up rather than a label. */}
+                                {isPqcLinked === true && (
+                                    <div className="flex items-center gap-1.5 bg-green-500/10 px-2.5 py-1 rounded-full border border-green-500/20 backdrop-blur-md">
+                                        <div className="w-1 h-1 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,1)] animate-pulse" />
+                                        <span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Quantum Safe</span>
+                                    </div>
+                                )}
+
+                                {isPqcLinked === false && hasFunds && (
+                                    <button
+                                        onClick={onOpenLinkModal}
+                                        className="flex items-center gap-1.5 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/30 backdrop-blur-md transition-all hover:bg-amber-500/20 hover:border-amber-500/50 active:scale-95"
+                                    >
+                                        <ShieldAlert className="w-3 h-3 shrink-0 text-amber-500" />
+                                        {/* tracking-wide, not widest: this label is three times the
+                                            length of the others and the card is 400px wide. */}
+                                        <span className="text-[9px] font-black text-amber-500 uppercase tracking-wide whitespace-nowrap">Enable Quantum Safety</span>
+                                    </button>
+                                )}
+
+                                {/* Nothing to secure yet: linking costs a minimum balance the
+                                    account does not have, so prompting would lead to a dead end. */}
+                                {isPqcLinked === false && !hasFunds && (
+                                    <div className="flex items-center gap-1.5 bg-foreground/5 px-2.5 py-1 rounded-full border border-border/50 backdrop-blur-md">
+                                        <ShieldAlert className="w-3 h-3 text-foreground/30" />
+                                        <span className="text-[9px] font-black text-foreground/30 uppercase tracking-widest">Not Protected</span>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Balance Display */}
