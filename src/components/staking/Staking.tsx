@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, TrendingUp, Award, Users, ChevronRight, RefreshCw, Info, CheckCircle2, ShieldCheck, PieChart, AlertCircle, Search } from 'lucide-react';
+import { ArrowLeft, Award, Users, ChevronRight, RefreshCw, Info, CheckCircle2, ShieldCheck, PieChart, AlertCircle, Search } from 'lucide-react';
 import { HistoryManager } from '../../modules/history/history';
 import type { LumenWallet } from '../../modules/sdk/key-manager';
 import { Toast } from '../common/Toast';
@@ -29,7 +29,6 @@ interface Validator {
     commission: string;
     votingPower: string;
     status: 'active' | 'inactive';
-    apr: string;
 }
 
 interface UserStake {
@@ -142,7 +141,6 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                         commission: validatorInfo ? `${commissionRate.toFixed(1)}%` : '—',
                         votingPower: validatorInfo ? (Number(validatorInfo.tokens) / 1000000).toFixed(0) : '0',
                         status: validatorInfo?.status === 'BOND_STATUS_BONDED' ? 'active' : 'inactive',
-                        apr: '12.5%' // Calculate from chain params if available
                     },
                     amount: (Number(stakedAmount) / 1000000).toFixed(2),
                     amountUlmn: String(stakedAmount),
@@ -196,7 +194,6 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                     commission: `${commissionRate.toFixed(1)}%`,
                     votingPower: (Number(v.tokens) / 1000000).toFixed(0),
                     status: v.status === 'BOND_STATUS_BONDED' ? 'active' : 'inactive',
-                    apr: '12.5%' // Calculate from chain params if available
                 };
             });
 
@@ -437,14 +434,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
             {step === 'dashboard' && (
                 <div className="flex flex-col h-full min-h-0 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
                     {/* Stats Cards */}
-                    <div className="grid grid-cols-3 gap-1.5 p-3 pb-2">
-                        <div className="bg-surface border border-border rounded-lg p-2 hover:bg-surfaceHighlight transition-colors min-w-0">
-                            <div className="flex items-center gap-1 mb-1">
-                                <TrendingUp className="w-3 h-3 text-primary" />
-                                <span className="text-[8px] text-[var(--text-dim)] uppercase font-bold tracking-wider">APR</span>
-                            </div>
-                            <p className="text-sm font-bold text-foreground truncate">12.5%</p>
-                        </div>
+                    <div className="grid grid-cols-2 gap-1.5 p-3 pb-2">
                         <div className="bg-surface border border-border rounded-lg p-2 hover:bg-surfaceHighlight transition-colors min-w-0">
                             <div className="flex items-center gap-1 mb-1">
                                 <Award className="w-3 h-3 text-lumen" />
@@ -556,8 +546,6 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                                                             <span className="text-[9px] font-bold text-foreground/50">{validator.commission} fee</span>
                                                             <span className="text-[9px] font-bold text-foreground/20">•</span>
                                                             <span className="text-[9px] font-bold text-primary/80">{Number(validator.votingPower).toLocaleString()} LMN staked</span>
-                                                            <span className="text-[9px] font-bold text-foreground/20">•</span>
-                                                            <span className="text-[9px] font-bold text-green-500">{validator.apr} APR</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -711,12 +699,12 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-0.5">
-                                    <span className="text-[8px] font-black uppercase text-[var(--text-dim)] tracking-widest">APR Reward</span>
-                                    <p className="text-sm font-black text-green-500">{selectedValidator.apr}</p>
-                                </div>
-                                <div className="space-y-0.5">
                                     <span className="text-[8px] font-black uppercase text-[var(--text-dim)] tracking-widest">Commission</span>
                                     <p className="text-sm font-black text-foreground">{selectedValidator.commission}</p>
+                                </div>
+                                <div className="space-y-0.5">
+                                    <span className="text-[8px] font-black uppercase text-[var(--text-dim)] tracking-widest">Voting Power</span>
+                                    <p className="text-sm font-black text-foreground">{Number(selectedValidator.votingPower).toLocaleString()} LMN</p>
                                 </div>
                             </div>
                         </div>
