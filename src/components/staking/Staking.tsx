@@ -432,7 +432,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
 
             {/* Dashboard View */}
             {step === 'dashboard' && (
-                <div className="flex flex-col h-full min-h-0 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex flex-col flex-1 min-h-0 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
                     {/* Stats Cards */}
                     <div className="grid grid-cols-2 gap-1.5 p-3 pb-2">
                         <div className="bg-surface border border-border rounded-lg p-2 hover:bg-surfaceHighlight transition-colors min-w-0">
@@ -680,7 +680,12 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
 
             {/* Detail View */}
             {step === 'detail' && selectedValidator && (
-                <div className="flex flex-col h-full min-h-0 bg-surface/30 px-4 pt-3 animate-in slide-in-from-right-4 duration-300">
+                /* flex-1, not h-full. This is a flex item sitting beside the
+                   header in the same column, so height:100% resolves against
+                   the whole column and the view ends up one header taller than
+                   the space it has — pushing the action button below the
+                   viewport, behind the footer. flex-1 takes what is left. */
+                <div className="flex flex-col flex-1 min-h-0 bg-surface/30 px-4 pt-3 animate-in slide-in-from-right-4 duration-300">
                     <div className="flex-1 space-y-4 overflow-y-auto scrollbar-hide">
                         {/* Validator Card */}
                         <div className="bg-surface border border-border rounded-2xl p-4 shadow-2xl relative overflow-hidden group">
@@ -758,7 +763,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                             disabled={!amount || parseFloat(amount) <= 0}
                             className="w-full py-3.5 bg-primary text-white rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:scale-100"
                         >
-                            Review Transaction
+                            {amount && parseFloat(amount) > 0 ? `Stake ${amount} LMN` : 'Stake'}
                         </button>
                     </div>
                 </div>
