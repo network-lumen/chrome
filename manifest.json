@@ -4,7 +4,7 @@
   "version": "1.0.6",
   "description": "Non-custodial Lumen Chain wallet with Swap v1 support.",
   "action": {
-    "default_popup": "index.html",
+    "default_popup": "index.html?view=popup",
     "default_title": "Lumen Wallet"
   },
   "permissions": [

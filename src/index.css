@@ -72,8 +72,12 @@ html, body {
    caps it at 800x600, so a page whose height resolves through percentages of an
    unsized root collapses to whatever the content happens to measure. 400x600 is
    the full height Chrome allows, which is what keeps the footer and the buttons
-   above it on screen. The side panel and the expanded tab get a container with
-   a real size, so they fill it. */
+   above it on screen.
+
+   This applies to the popup and nothing else. The side panel, the expanded tab
+   and any unmarked view keep the 100% above and fill whatever container they
+   are given — forcing a fixed size on a full-size window is what produces a
+   narrow, vertically clipped column. */
 html[data-view='popup'], html[data-view='popup'] body {
   width: 400px;
   height: 600px;
