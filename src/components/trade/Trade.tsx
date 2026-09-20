@@ -12,6 +12,8 @@ interface TradeListing {
     title: string;
     subtitle: string;
     url: string;
+    /** Button label, for venues where "market" is not what the page shows. */
+    cta: string;
 }
 
 const TRADE_LISTINGS: TradeListing[] = [
@@ -20,7 +22,19 @@ const TRADE_LISTINGS: TradeListing[] = [
         venue: 'BeeZee DEX',
         title: 'LMN / USDC',
         subtitle: 'Open the BeeZee market page for LMN against USDC.',
-        url: 'https://dex.getbze.com/exchange/market?id=ibc/693DDB2D9B4260D67C8136C22D837F37488E0FBD81857D8E9C6022332EA26E33/ibc/6490A7EAB61059BFC1CDDEB05917DD70BDF3A611654162A1A47DB930D40D8AF4'
+        url: 'https://dex.getbze.com/exchange/market?id=ibc/693DDB2D9B4260D67C8136C22D837F37488E0FBD81857D8E9C6022332EA26E33/ibc/6490A7EAB61059BFC1CDDEB05917DD70BDF3A611654162A1A47DB930D40D8AF4',
+        cta: 'Open Market'
+    },
+    {
+        /* Osmosis lists LMN as an IBC voucher rather than a native denom, so the
+           entry point is the asset page for that voucher — it carries the price,
+           the pools and the swap widget — not a single trading pair. */
+        id: 'osmosis-lmn',
+        venue: 'Osmosis',
+        title: 'LMN',
+        subtitle: 'Swap LMN on Osmosis and see its pools and liquidity.',
+        url: 'https://app.osmosis.zone/assets/ibc/88DBE57372690630D2DD9779C247479CE124E777C5D695FA90699F3140CEC59F',
+        cta: 'Open on Osmosis'
     }
 ];
 
@@ -61,7 +75,7 @@ export const Trade: React.FC<TradeProps> = (_props) => {
                             onClick={() => openExternalUrl(listing.url)}
                             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-primary-hover"
                         >
-                            Open Market
+                            {listing.cta}
                             <ExternalLink className="w-4 h-4" />
                         </button>
                     </div>
