@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { X } from 'lucide-react';
 import type { LumenWallet } from '../../modules/sdk/key-manager';
 
 interface BackupModalProps {
@@ -85,7 +86,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({ wallet, onClose }) => 
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-xl font-bold text-foreground">Unlock Backup</h3>
                         <button onClick={onClose} className="p-2 hover:bg-surfaceHighlight rounded-full transition-colors">
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l18 18" /></svg>
+                            <X className="w-5 h-5" />
                         </button>
                     </div>
 
@@ -126,7 +127,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({ wallet, onClose }) => 
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-xl font-bold text-foreground">Secure Backup</h3>
                         <button onClick={onClose} className="p-2 hover:bg-surfaceHighlight rounded-full transition-colors">
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l18 18" /></svg>
+                            <X className="w-5 h-5" />
                         </button>
                     </div>
 
