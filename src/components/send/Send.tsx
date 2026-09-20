@@ -173,6 +173,11 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
        off what they receive rather than off what the sender pays. */
     const recipientReceives = (parsed: number) => parsed * (1 - (paysLumenMessageFee ? feeParams.txTaxRate : 0));
 
+    /* Both of these are votable and both can reach zero. At zero there is
+       nothing to disclose, so the corresponding rows are not rendered. */
+    const showsMessageFee = messageFeeLmn > 0;
+    const showsTransferTax = feeParams.txTaxRate > 0;
+
     useEffect(() => {
         let cancelled = false;
         void getChainFeeParams().then((params) => {
@@ -760,18 +765,27 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                             {/* What the sender pays and what the recipient nets are two
                                 different numbers on this chain: the message fee is taken
                                 from the sender on top, the transfer tax from the recipient. */}
-                            {paysLumenMessageFee && (
+                            {/* Every line here is governed by a votable parameter, and each
+                                one can be voted to zero. A charge of zero is not information
+                                — "Network fee: 0 LMN", or a total that repeats the amount —
+                                so each row appears only while it has something to say, and
+                                the panel itself disappears when none of them do. */}
+                            {paysLumenMessageFee && (showsMessageFee || showsTransferTax) && (
                                 <div className="bg-surfaceHighlight/50 p-4 rounded-2xl border border-border/30 space-y-2">
-                                    <div className="flex justify-between items-center text-[11px]">
-                                        <span className="text-[var(--text-muted)] font-semibold">Network fee</span>
-                                        <span className="font-bold text-foreground">{formatDisplayAmount(messageFeeLmn)} {sourceSymbol}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-[11px]">
-                                        <span className="text-[var(--text-muted)] font-semibold">Total debited</span>
-                                        <span className="font-bold text-foreground">{formatDisplayAmount(parseFloat(amount || '0') + messageFeeLmn)} {sourceSymbol}</span>
-                                    </div>
-                                    {feeParams.txTaxRate > 0 && (
-                                        <div className="flex justify-between items-center text-[11px] pt-2 border-t border-border/10">
+                                    {showsMessageFee && (
+                                        <>
+                                            <div className="flex justify-between items-center text-[11px]">
+                                                <span className="text-[var(--text-muted)] font-semibold">Network fee</span>
+                                                <span className="font-bold text-foreground">{formatDisplayAmount(messageFeeLmn)} {sourceSymbol}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-[11px]">
+                                                <span className="text-[var(--text-muted)] font-semibold">Total debited</span>
+                                                <span className="font-bold text-foreground">{formatDisplayAmount(parseFloat(amount || '0') + messageFeeLmn)} {sourceSymbol}</span>
+                                            </div>
+                                        </>
+                                    )}
+                                    {showsTransferTax && (
+                                        <div className={`flex justify-between items-center text-[11px] ${showsMessageFee ? 'pt-2 border-t border-border/10' : ''}`}>
                                             <span className="text-[var(--text-muted)] font-semibold">
                                                 Recipient receives
                                                 <span className="opacity-60"> (after {(feeParams.txTaxRate * 100).toFixed(2)}% tax)</span>

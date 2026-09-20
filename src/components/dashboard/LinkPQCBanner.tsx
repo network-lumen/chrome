@@ -42,7 +42,10 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
     );
     const [error, setError] = useState<string>('');
     const [progress, setProgress] = useState<number>(0);
-    const [requirements, setRequirements] = useState({ minBalance: '1000', powBits: 21 });
+    const [requirements, setRequirements] = useState({ minBalance: '1000', linkFeeUlmn: '1000', powBits: 21 });
+    /* The fee actually spent, which is what "costs" means to the user —
+       min_balance_for_link is only held, never debited. */
+    const linkCostLmn = Number(requirements.linkFeeUlmn || '0') / 1_000_000;
     const [isActionStarting, setIsActionStarting] = useState(false);
     const [backupMessage, setBackupMessage] = useState<string>('');
 
@@ -87,7 +90,7 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
             try {
                 reqs = await getLinkRequirements();
                 if (controller.signal.aborted) return;
-                setRequirements({ minBalance: reqs.minBalance, powBits: reqs.powDifficultyBits });
+                setRequirements({ minBalance: reqs.minBalance, linkFeeUlmn: reqs.linkFeeUlmn, powBits: reqs.powDifficultyBits });
             } catch (e) {
                 if (controller.signal.aborted) return;
             }
@@ -298,9 +301,17 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
                         <h3 className="font-bold text-yellow-900 dark:text-yellow-100 mb-1">
                             🔗 Link Your PQC Account
                         </h3>
+                        {/* What linking costs is a chain parameter, not a constant.
+                            v2.0.0 set pow_difficulty_bits to 0 and priced linking with a
+                            flat fee instead, so the old "computing a proof-of-work, may
+                            take 10-30 seconds" was describing work that no longer
+                            happens. Both are votable and either can come back, so the
+                            sentence follows the params rather than restating today's. */}
                         <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
                             To enable dual-signed transactions, you need to register your PQC public key on-chain.
-                            This is a one-time setup that requires computing a proof-of-work (may take 10-30 seconds).
+                            This is a one-time setup
+                            {linkCostLmn > 0 && <> costing <span className="font-bold">{linkCostLmn} LMN</span></>}
+                            {requirements.powBits > 0 && <> that also computes a proof-of-work (may take 10-30 seconds)</>}.
                         </p>
                     </div>
                     <button
@@ -320,11 +331,16 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
             {/* Computing State */}
             {linkState === 'computing' && (
                 <div>
+                    {/* With pow_difficulty_bits at 0 no nonce is mined and this step is
+                        instant, so naming it after work that is not happening would be
+                        the same mistake twice. */}
                     <h3 className="font-bold text-yellow-900 dark:text-yellow-100 mb-2">
-                        ⚙️ Computing Proof-of-Work...
+                        ⚙️ {requirements.powBits > 0 ? 'Computing Proof-of-Work...' : 'Preparing Your Key...'}
                     </h3>
                     <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-2">
-                        Please wait while we compute the required nonce. This may take a moment.
+                        {requirements.powBits > 0
+                            ? 'Please wait while we compute the required nonce. This may take a moment.'
+                            : 'Please wait while your key is prepared for registration.'}
                     </p>
                     <div className="w-full bg-yellow-200 dark:bg-yellow-800 rounded-full h-2">
                         <div
