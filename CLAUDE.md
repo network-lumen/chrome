@@ -141,15 +141,24 @@ function that enforces is `VaultManager.lockIfExpired()`, which is reached from:
 1. **the background `auto-lock` alarm**, every minute — the only check that runs
    with every view closed. One minute is Chrome's floor for alarm periods, so
    the lock can overshoot the configured timeout by up to that.
-2. **`chrome.runtime.onStartup`** — a browser restart clears storage.session and
+2. **every service worker startup**, top-level, since the worker wakes for any
+   dApp message, alarm or popup open.
+3. **`chrome.runtime.onStartup`** — a browser restart clears storage.session and
    with it `lastActiveAt`, but not the IndexedDB key, so the key from the
    previous browser session has to be dropped explicitly.
-3. **`checkSession()` in App.tsx**, before the first `getWallets()`.
-4. the 5s poll in App.tsx, while a view is open.
+4. **`checkSession()` in App.tsx**, before the first `getWallets()`.
+5. the 5s poll in App.tsx, while a view is open.
 
-Order matters in (3): `getWallets()` succeeds whenever the key is on disk and
-consults no timeout, so anything that reads the vault before `lockIfExpired()`
-has already bypassed the lock.
+**`getWallets()` consults no timeout.** It succeeds whenever the key is on disk,
+so anything that reads the vault before `lockIfExpired()` — or without asking
+`checkWalletLocked()` — has bypassed the lock. Treat "the call threw" as "no key
+at all", never as "locked". Every new vault read needs its own gate.
+
+Alarms are created through `ensureAlarm()`, which skips creation when the alarm
+already exists. `chrome.alarms.create()` on an existing name clears and replaces
+it, restarting its countdown — and background top-level code re-runs on every
+worker wake, so unconditional creation pushes a one-minute alarm out of reach of
+ever firing.
 
 ## Conventions
 

@@ -152,8 +152,23 @@ if (typeof chrome !== 'undefined' && chrome.contextMenus && chrome.contextMenus.
 
 // Handle background alarms for periodic tasks
 if (typeof chrome !== 'undefined' && chrome.alarms) {
-    chrome.alarms.create('refresh-rpc', { periodInMinutes: 5 });
-    chrome.alarms.create('keepalive', { periodInMinutes: 1 });
+    /* Create each alarm only if it is not already scheduled.
+     *
+     * chrome.alarms.create() on an existing name *clears and replaces* that
+     * alarm, restarting its countdown — and this file is top-level service
+     * worker code, so it re-runs on every wake. Since these alarms are
+     * themselves what wakes the worker, recreating them unconditionally pushes
+     * the next firing another period into the future on each wake, and a
+     * one-minute alarm can end up never firing at all. That is survivable for
+     * a keepalive; it is not for the only check that enforces the lock. */
+    const ensureAlarm = (name: string, periodInMinutes: number) => {
+        chrome.alarms.get(name, (existing) => {
+            if (!existing) chrome.alarms.create(name, { periodInMinutes });
+        });
+    };
+
+    ensureAlarm('refresh-rpc', 5);
+    ensureAlarm('keepalive', 1);
     /* Auto-lock enforcement belongs here, not in the UI.
      *
      * The popup's poll only runs while the popup is open, so closing it
@@ -164,7 +179,13 @@ if (typeof chrome !== 'undefined' && chrome.alarms) {
      * One minute is the floor Chrome enforces on alarm periods, so the lock
      * can overshoot the configured timeout by up to a minute. Startup checks
      * again, which closes that gap for anyone actually opening the wallet. */
-    chrome.alarms.create('auto-lock', { periodInMinutes: 1 });
+    ensureAlarm('auto-lock', 1);
+
+    /* Belt and braces: enforce on every worker startup too. The worker wakes
+       for any dApp message, any alarm and any popup open, so this catches an
+       expired session even if the alarm above is delayed or dropped. */
+    VaultManager.lockIfExpired().catch(() => { });
+
     chrome.alarms.onAlarm.addListener((alarm) => {
         if (alarm.name === 'refresh-rpc') {
             NetworkManager.getInstance().refreshBestRpc();
@@ -750,6 +771,13 @@ async function ensureHostPermissions(): Promise<void> {
 
 async function getWalletAddress(): Promise<string | null> {
     try {
+        /* Check the timeout, not just whether the vault can be opened.
+         *
+         * getWallets() consults no timeout — it succeeds whenever the key is
+         * still in IndexedDB, which it is until something clears it. Relying on
+         * it to throw meant an expired session still handed out the address. */
+        if (await checkWalletLocked()) return null;
+
         // Get wallets from vault (requires active session)
         const wallets = await VaultManager.getWallets();
 
@@ -918,6 +946,13 @@ async function handleCosmosGetKey(chainId: string, origin?: string) {
         if (!connectedOrigins.includes(origin)) {
             throw new Error('Not connected. Call enable() first.');
         }
+    }
+
+    /* "Locked" has to be asked about explicitly; the check below only catches
+       "empty". A connected dApp could otherwise read the account out of a
+       session that had long expired. */
+    if (await checkWalletLocked()) {
+        throw new Error('Wallet is locked');
     }
 
     const wallets = await VaultManager.getWallets();
