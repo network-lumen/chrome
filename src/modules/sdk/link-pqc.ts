@@ -83,8 +83,30 @@ const ensureUint8Array = (input: string | Uint8Array | undefined): Uint8Array =>
 };
 
 export interface LinkRequirements {
-    minBalance: string;  /* in ulmn */
+    /**
+     * Balance the account must hold, in ulmn. A solvency proof, never debited
+     * (x/pqc/keeper/msg_server.go: ensureMinBalance).
+     */
+    minBalance: string;
+    /**
+     * Flat fee actually spent to link, in ulmn, routed to the community pool.
+     * New in chain v2.0.0 and non-refundable, unlike minBalance.
+     */
+    linkFeeUlmn: string;
     powDifficultyBits: number;
+}
+
+/**
+ * Balance an account needs before linking can succeed, in ulmn.
+ *
+ * Both checks run against the same pre-debit balance: the account must hold
+ * minBalance, and the fee must then be debitable. So the threshold is whichever
+ * of the two is larger, not their sum.
+ */
+export function requiredBalanceForLink(reqs: LinkRequirements): bigint {
+    const min = BigInt(reqs.minBalance || '0');
+    const fee = BigInt(reqs.linkFeeUlmn || '0');
+    return min > fee ? min : fee;
 }
 
 export interface LinkStatus {
@@ -101,6 +123,7 @@ export async function getLinkRequirements(apiEndpoint?: string): Promise<LinkReq
         const rawBits = data.params?.pow_difficulty_bits;
         return {
             minBalance: data.params?.min_balance_for_link?.amount || '1000',
+            linkFeeUlmn: String(data.params?.link_fee_ulmn ?? '1000'),
             /* Chain v2.0.0 ships pow_difficulty_bits at 0 on purpose, because
                that release changed the link digest to commit to the account
                address and nonces mined under the old formula must stay valid.
@@ -112,8 +135,37 @@ export async function getLinkRequirements(apiEndpoint?: string): Promise<LinkReq
     } catch (err: any) {
         console.error('[LINK] Failed to fetch requirements:', err);
         /* Return defaults */
-        return { minBalance: '1000', powDifficultyBits: 21 };
+        return { minBalance: '1000', linkFeeUlmn: '1000', powDifficultyBits: 21 };
     }
+}
+
+/**
+ * Whether the address exists as an account on chain.
+ *
+ * An address only becomes an account once it has received something; before
+ * that there is nothing to protect and nothing to link a key to. Distinguishes
+ * "definitely absent" (a provider answered 404) from "could not tell" (every
+ * provider failed), so a network blip is not mistaken for a fresh account.
+ */
+export async function checkAccountExists(address: string, apiEndpoint?: string): Promise<boolean | null> {
+    let sawNotFound = false;
+
+    for (const endpoint of restCandidates(apiEndpoint)) {
+        try {
+            const res = await fetch(`${endpoint}/cosmos/auth/v1beta1/accounts/${address}`, {
+                signal: AbortSignal.timeout(REST_TIMEOUT_MS)
+            });
+            if (res.ok) return true;
+            if (res.status === 404) {
+                sawNotFound = true;
+                continue;
+            }
+        } catch {
+            /* network failure against this provider; try the next */
+        }
+    }
+
+    return sawNotFound ? false : null;
 }
 
 /**

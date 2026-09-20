@@ -13,7 +13,7 @@ import { NetworkManager } from '../modules/sdk/network';
 import { ShieldAlert } from 'lucide-react';
 import { ReceiveModal } from './dashboard/ReceiveModal';
 import { LinkPQCBanner } from './dashboard/LinkPQCBanner';
-import { checkPqcAccountStatus } from '../modules/sdk/link-pqc';
+import { checkAccountExists, checkPqcAccountStatus, getLinkRequirements, requiredBalanceForLink } from '../modules/sdk/link-pqc';
 import { HistoryModal } from './history/HistoryModal';
 import { HistoryManager } from '../modules/history/history';
 import {
@@ -90,28 +90,52 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
      * no local flag. */
     const [isPqcLinked, setIsPqcLinked] = React.useState<boolean | null>(null);
 
+    /* An address only becomes an account once it has received something. Before
+       that there is nothing to protect and nothing to link a key to, so the
+       badge stays silent rather than prompting for an impossible action.
+       `null` is "could not tell" and reads the same way. */
+    const [accountExists, setAccountExists] = React.useState<boolean | null>(null);
+    const [linkCostUlmn, setLinkCostUlmn] = React.useState<bigint | null>(null);
+    const [showLinkCost, setShowLinkCost] = React.useState(false);
+
     /* Kept beside the formatted `balance` rather than parsed back out of it:
        that string is grouped and rounded for display. State, not the existing
        ref, because this drives what the badge renders. */
     const [balanceUlmn, setBalanceUlmn] = useState('0');
-    const hasFunds = Number(balanceUlmn) > 0;
 
     React.useEffect(() => {
         if (!activeKeys?.address) return;
 
-        if (activeKeys.linked || activeKeys.linkTxHash) {
-            setIsPqcLinked(true);
-            return;
-        }
-
         let cancelled = false;
-        setIsPqcLinked(null);
-        void checkPqcAccountStatus(activeKeys.address)
-            .then((status) => { if (!cancelled) setIsPqcLinked(status.isLinked); })
-            .catch(() => { if (!cancelled) setIsPqcLinked(null); });
+        const locallyLinked = !!(activeKeys.linked || activeKeys.linkTxHash);
+
+        setIsPqcLinked(locallyLinked ? true : null);
+        setAccountExists(null);
+        setShowLinkCost(false);
+
+        void (async () => {
+            const [exists, status, reqs] = await Promise.all([
+                checkAccountExists(activeKeys.address),
+                locallyLinked
+                    ? Promise.resolve({ isLinked: true })
+                    : checkPqcAccountStatus(activeKeys.address).catch(() => null),
+                getLinkRequirements().catch(() => null)
+            ]);
+            if (cancelled) return;
+
+            setAccountExists(exists);
+            if (status) setIsPqcLinked(status.isLinked);
+            if (reqs) setLinkCostUlmn(requiredBalanceForLink(reqs));
+        })();
 
         return () => { cancelled = true; };
     }, [activeKeys?.address, activeKeys?.linked, activeKeys?.linkTxHash]);
+
+    /* Below this the chain refuses the link, so the shortcut is shown inert
+       with the reason rather than hidden — the threshold is the answer to
+       "why can't I?", and hiding the control answers nothing. */
+    const canAffordLink = linkCostUlmn === null || BigInt(balanceUlmn || '0') >= linkCostUlmn;
+    const linkCostLmn = linkCostUlmn === null ? null : Number(linkCostUlmn) / 1_000_000;
 
     /* Fetch Balance Effect */
     React.useEffect(() => {
@@ -406,24 +430,47 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
                                     </div>
                                 )}
 
-                                {isPqcLinked === false && hasFunds && (
-                                    <button
-                                        onClick={onOpenLinkModal}
-                                        className="flex items-center gap-1.5 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/30 backdrop-blur-md transition-all hover:bg-amber-500/20 hover:border-amber-500/50 active:scale-95"
-                                    >
-                                        <ShieldAlert className="w-3 h-3 shrink-0 text-amber-500" />
-                                        {/* tracking-wide, not widest: this label is three times the
-                                            length of the others and the card is 400px wide. */}
-                                        <span className="text-[9px] font-black text-amber-500 uppercase tracking-wide whitespace-nowrap">Enable Quantum Safety</span>
-                                    </button>
-                                )}
+                                {/* Unlinked, but only once the account exists on chain. An address
+                                    nobody has funded yet gets no badge at all: it holds nothing to
+                                    protect, and the chain has no account to attach a key to. */}
+                                {isPqcLinked === false && accountExists === true && (
+                                    <div className="relative flex items-center gap-1">
+                                        <button
+                                            onClick={onOpenLinkModal}
+                                            disabled={!canAffordLink}
+                                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border backdrop-blur-md transition-all ${canAffordLink
+                                                ? 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20 hover:border-amber-500/50 active:scale-95'
+                                                : 'bg-amber-500/5 border-amber-500/15 cursor-not-allowed opacity-60'
+                                                }`}
+                                        >
+                                            <ShieldAlert className="w-3 h-3 shrink-0 text-amber-500" />
+                                            {/* tracking-wide, not widest: this label is three times the
+                                                length of the others and the card is 400px wide. */}
+                                            <span className="text-[9px] font-black text-amber-500 uppercase tracking-wide whitespace-nowrap">Enable Quantum Safety</span>
+                                        </button>
 
-                                {/* Nothing to secure yet: linking costs a minimum balance the
-                                    account does not have, so prompting would lead to a dead end. */}
-                                {isPqcLinked === false && !hasFunds && (
-                                    <div className="flex items-center gap-1.5 bg-foreground/5 px-2.5 py-1 rounded-full border border-border/50 backdrop-blur-md">
-                                        <ShieldAlert className="w-3 h-3 text-foreground/30" />
-                                        <span className="text-[9px] font-black text-foreground/30 uppercase tracking-widest">Not Protected</span>
+                                        {/* Only when it cannot be acted on: the "why" is the thing
+                                            missing, and the amount comes from the chain's own
+                                            params rather than a number baked in here. */}
+                                        {!canAffordLink && linkCostLmn !== null && (
+                                            <>
+                                                <button
+                                                    onClick={() => setShowLinkCost((v) => !v)}
+                                                    aria-label={`Enabling quantum safety requires ${linkCostLmn} LMN`}
+                                                    className="w-4 h-4 shrink-0 rounded-full border border-amber-500/30 text-amber-500 text-[9px] font-black leading-none flex items-center justify-center transition-colors hover:bg-amber-500/15"
+                                                >
+                                                    ?
+                                                </button>
+                                                {showLinkCost && (
+                                                    <div className="absolute right-0 top-full mt-1.5 z-30 w-44 rounded-lg border border-border bg-surface p-2 shadow-xl">
+                                                        <p className="text-[9px] leading-relaxed text-foreground/70 normal-case tracking-normal font-medium">
+                                                            Registering a quantum-safe key needs{' '}
+                                                            <span className="font-black text-foreground">{linkCostLmn} LMN</span> in this account.
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </div>

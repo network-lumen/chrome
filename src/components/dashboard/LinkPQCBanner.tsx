@@ -5,6 +5,7 @@ import {
     getLinkRequirements,
     checkBalance,
     computeLinkPowNonce,
+    requiredBalanceForLink,
     linkPqcAccount,
     checkPqcAccountStatus
 } from '../../modules/sdk/link-pqc';
@@ -91,14 +92,19 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
                 if (controller.signal.aborted) return;
             }
 
-            /* Check balance */
-            // @ts-ignore
-            const hasBalance = await checkBalance(wallet.address, reqs?.minBalance || '1000');
+            /* Check balance against the same threshold the badge uses: the
+               larger of min_balance_for_link and the link fee. Checking only
+               min_balance passed accounts that would then fail to pay the fee,
+               and disagreed with what the dashboard had just told the user. */
+            const required = reqs
+                ? requiredBalanceForLink(reqs).toString()
+                : '1000';
+            const hasBalance = await checkBalance(wallet.address, required);
             if (controller.signal.aborted) return;
 
             if (!hasBalance) {
                 if (isModal) {
-                    setError(`Insufficient balance. Linking requires ${parseInt(reqs?.minBalance || '1000') / 1000000} LMN.`);
+                    setError(`Insufficient balance. Linking requires ${parseInt(required) / 1000000} LMN.`);
                     setLinkState('error');
                 } else {
                     setLinkState('hidden'); /* Don't show banner if insufficient balance */
