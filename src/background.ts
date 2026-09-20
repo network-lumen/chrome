@@ -154,12 +154,28 @@ if (typeof chrome !== 'undefined' && chrome.contextMenus && chrome.contextMenus.
 if (typeof chrome !== 'undefined' && chrome.alarms) {
     chrome.alarms.create('refresh-rpc', { periodInMinutes: 5 });
     chrome.alarms.create('keepalive', { periodInMinutes: 1 });
+    /* Auto-lock enforcement belongs here, not in the UI.
+     *
+     * The popup's poll only runs while the popup is open, so closing it
+     * suspended the timeout entirely and the vault key sat on disk until
+     * someone reopened the wallet. An alarm keeps running with every view
+     * closed, and wakes the service worker if it has been evicted.
+     *
+     * One minute is the floor Chrome enforces on alarm periods, so the lock
+     * can overshoot the configured timeout by up to a minute. Startup checks
+     * again, which closes that gap for anyone actually opening the wallet. */
+    chrome.alarms.create('auto-lock', { periodInMinutes: 1 });
     chrome.alarms.onAlarm.addListener((alarm) => {
         if (alarm.name === 'refresh-rpc') {
             NetworkManager.getInstance().refreshBestRpc();
         }
         if (alarm.name === 'keepalive') {
             chrome.storage.local.get(['connectedOrigins']).catch(() => { });
+        }
+        if (alarm.name === 'auto-lock') {
+            VaultManager.lockIfExpired().catch((e) => {
+                console.error('[Lumen] auto-lock check failed:', e);
+            });
         }
     });
 }
@@ -234,6 +250,12 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
 if (chrome?.runtime?.onStartup) {
     chrome.runtime.onStartup.addListener(() => {
         prunePendingQueue().catch(() => {
+        });
+        /* The browser has just restarted, so chrome.storage.session — and with
+           it the lastActiveAt record — is gone, while the IndexedDB vault key
+           survived on disk. Without this the key from the previous browser
+           session stays valid and no timeout ever applies to it. */
+        VaultManager.lockIfExpired().catch(() => {
         });
     });
 }

@@ -110,6 +110,18 @@ function App() {
       const exists = await VaultManager.hasWallet();
       setHasVault(exists);
       if (exists) {
+        /* Enforce the auto-lock before reading the vault.
+         *
+         * This is what made the wallet "sometimes not lock on close": nothing
+         * checks expiry while the popup is shut — the 5s poll below lives in
+         * this React tree and dies with it — so startup went straight to
+         * getWallets(), which succeeds whenever the key is still on disk,
+         * whatever the timeout says. The popup therefore came back unlocked
+         * every time, and only the next poll tick, up to five seconds later,
+         * locked it. Close it inside that window and it never locked at all.
+         */
+        await VaultManager.lockIfExpired();
+
         // Check if we already have an active session
         try {
           const unlockedWallets = await VaultManager.getWallets();
@@ -184,9 +196,12 @@ function App() {
       const exists = await VaultManager.hasWallet();
       setHasVault(exists);
       if (!exists || isLockedRef.current) return;
-      const expired = await VaultManager.isSessionExpired();
-      if (expired) {
-        handleLock();
+      /* lockIfExpired drops the key as well as flipping the view; the old
+         handleLock() path cleared the session too, but only because the UI
+         happened to be open to run it. */
+      if (await VaultManager.lockIfExpired()) {
+        setIsLocked(true);
+        navigate('/');
       }
     }, 5000);
 

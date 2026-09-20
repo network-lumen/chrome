@@ -215,7 +215,20 @@ const STORAGE_KEY_SESSION_KEY = 'lumen_session_key_jwk';
 
 export class VaultManager {
     /**
-     * Persist the key to session storage (memory only, safe for SW)
+     * Persist the vault key so the service worker and a reopened popup can
+     * decrypt without asking for the password again.
+     *
+     * This uses IndexedDB, not `chrome.storage.session`, and that is not an
+     * implementation detail: a non-extractable CryptoKey cannot be put in
+     * storage.session (it is not JSON), while IndexedDB structured-clones it,
+     * so the raw key material never becomes readable to script. The cost is
+     * that IndexedDB is *durable* — it survives the popup closing, the service
+     * worker being evicted, and the browser restarting.
+     *
+     * So the key outlives the session unless something deletes it. That
+     * something is clearSession(), reached through lockIfExpired() from the
+     * background alarm and from the app on startup. Nothing else expires it;
+     * `isLocked` in the UI is a render flag, not a lock.
      */
     private static async persistSessionKey(key: CryptoKey) {
         if (!hasIndexedDb()) return;
@@ -433,6 +446,28 @@ export class VaultManager {
 
         const timeout = await this.getLockTimeout();
         return Date.now() - existing.lastActiveAt > timeout;
+    }
+
+    /**
+     * Enforces the auto-lock: if the session has expired, drop the vault key.
+     *
+     * isSessionExpired() only *reports*; every caller used to act on the answer
+     * by setting a React flag, which locks the view and leaves the key on disk.
+     * This is the one place that actually revokes access, and it is safe to
+     * call from anywhere — the background alarm, the app on startup, the idle
+     * poll. Returns whether it locked.
+     *
+     * A missing session record counts as expired. That is the state after a
+     * browser restart, because chrome.storage.session is cleared then while the
+     * IndexedDB key is not — so the key from the previous browser session has
+     * to go, or the timeout never applies to it.
+     */
+    static async lockIfExpired(): Promise<boolean> {
+        if (!(await this.hasWallet())) return false;
+        if (!(await this.isSessionExpired())) return false;
+
+        await this.clearSession();
+        return true;
     }
 
     static async touchSession() {
