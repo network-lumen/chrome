@@ -85,7 +85,7 @@ interface BuildAndSignTxOptions {
     feeAmount?: Array<{ denom: string; amount: string }>;
 }
 
-async function buildAndSignTx({
+export async function buildAndSignTx({
     walletData,
     messages,
     memo,
@@ -328,6 +328,52 @@ export async function broadcastTx(txBytes: Uint8Array, restUrl?: string): Promis
     }
 
     return data.tx_response.txhash;
+}
+
+/**
+ * Waits for a broadcast transaction to land in a block.
+ *
+ * BROADCAST_MODE_SYNC returns as soon as the transaction passes CheckTx, which
+ * is before it is in a block and therefore before any balance it moves has
+ * moved. Refreshing the UI on that return shows the state the transaction was
+ * meant to change — which is what made every confirmation in this wallet look
+ * like it had done nothing.
+ *
+ * Resolves with the committed result, or with `null` if the transaction has not
+ * appeared within `timeoutMs` (it may still land later; the caller should treat
+ * that as "pending", not as failure). Throws only when the chain reports the
+ * transaction failed, with the reason it gave.
+ */
+export async function waitForTxCommit(
+    txHash: string,
+    { timeoutMs = 30000, intervalMs = 1500, restUrl }: { timeoutMs?: number; intervalMs?: number; restUrl?: string } = {}
+): Promise<{ height: string; code: number; rawLog: string } | null> {
+    const endpoint = restUrl || await NetworkManager.getInstance().getRestEndpoint();
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+        try {
+            const res = await fetch(`${endpoint}/cosmos/tx/v1beta1/txs/${txHash}`);
+            if (res.ok) {
+                const data = await res.json();
+                const response = data.tx_response;
+                if (response?.height && response.height !== '0') {
+                    if (response.code !== 0) {
+                        throw new Error(response.raw_log || `Transaction failed with code ${response.code}`);
+                    }
+                    return { height: response.height, code: response.code, rawLog: response.raw_log || '' };
+                }
+            }
+        } catch (e: any) {
+            /* A 404 while the tx is still in the mempool is expected; a chain-reported
+               failure is not, and must not be swallowed into a timeout. */
+            if (e?.message && !/fetch|network|404/i.test(e.message)) throw e;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+
+    return null;
 }
 
 function createStandardRegistry(): Registry {

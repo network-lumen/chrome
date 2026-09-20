@@ -7,12 +7,16 @@ import {
     fetchDelegations,
     fetchRewards,
     fetchValidators,
-    fetchValidator,
+    fetchAllValidators,
+    fetchBalanceUlmn,
     delegateTokens,
     undelegateTokens,
     claimRewards,
+    claimAllRewards,
     fetchUnbondingDelegations
 } from '../../modules/sdk/staking';
+import { waitForTxCommit } from '../../modules/sdk/tx';
+import { FALLBACK_FEE_PARAMS, getChainFeeParams, spendableAfterFee, type ChainFeeParams } from '../../modules/sdk/chain-params';
 
 interface StakingProps {
     walletKeys: LumenWallet;
@@ -31,6 +35,8 @@ interface Validator {
 interface UserStake {
     validator: Validator;
     amount: string;
+    /** Exact delegated amount in ulmn, as the chain reports it. */
+    amountUlmn: string;
     rewards: string;
     validatorAddress: string;
 }
@@ -60,8 +66,28 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
     const [unbondingEntries, setUnbondingEntries] = useState<UnbondingEntry[]>([]);
     const [showUnstakeConfirm, setShowUnstakeConfirm] = useState(false);
     const [stakeToUnstake, setStakeToUnstake] = useState<UserStake | null>(null);
+    const [claimingValidator, setClaimingValidator] = useState<string | null>(null);
+    const [claimingAll, setClaimingAll] = useState(false);
+
+    const [feeParams, setFeeParams] = useState<ChainFeeParams>(FALLBACK_FEE_PARAMS);
 
     const hasStakes = userStakes.length > 0;
+    const claimableStakes = userStakes.filter((stake) => parseFloat(stake.rewards) > 0);
+    const isClaiming = claimingAll || claimingValidator !== null;
+
+    /* MsgDelegate is priced in the ante from the account balance, so the most
+       that can be staked is the balance minus that fee. Offering the whole
+       balance produced a delegation the chain refused for insufficient funds. */
+    const maxStakableUlmn = spendableAfterFee(BigInt(balanceUlmn || '0'), feeParams.delegateFeeUlmn);
+    const maxStakableLmn = Number(maxStakableUlmn) / 1_000_000;
+
+    useEffect(() => {
+        let cancelled = false;
+        void getChainFeeParams().then((params) => {
+            if (!cancelled) setFeeParams(params);
+        });
+        return () => { cancelled = true; };
+    }, []);
 
     // Fetch user's delegations and rewards
     const fetchUserStakingData = async () => {
@@ -69,11 +95,27 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
 
         setFetching(true);
         try {
-            // Fetch delegations
-            const delegations = await fetchDelegations(walletKeys.address);
+            /* One round trip each, in parallel. The validator set is fetched
+               whole and indexed rather than queried once per delegation: that
+               loop was one sequential request per validator, and it ran again
+               for every unbonding entry. */
+            const [delegations, rewardsData, allValidators, unbondingData] = await Promise.all([
+                fetchDelegations(walletKeys.address),
+                fetchRewards(walletKeys.address),
+                fetchAllValidators(),
+                fetchUnbondingDelegations(walletKeys.address)
+            ]);
 
-            // Fetch rewards
-            const rewardsData = await fetchRewards(walletKeys.address);
+            const validatorByAddress = new Map<string, any>(
+                allValidators.map((v: any) => [v.operator_address, v])
+            );
+
+            const rewardByValidator = new Map<string, string>(
+                (rewardsData.rewards || []).map((r: any) => [
+                    r.validator_address,
+                    r.reward?.find((c: any) => c.denom === 'ulmn')?.amount || '0'
+                ])
+            );
 
             // Calculate total staked
             let totalStakedAmount = BigInt(0);
@@ -84,32 +126,29 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                 const stakedAmount = delegation.balance.amount;
                 totalStakedAmount += BigInt(stakedAmount);
 
-                // Fetch validator info
-                const validatorInfo = await fetchValidator(validatorAddr);
+                const validatorInfo = validatorByAddress.get(validatorAddr);
+                const rewardAmount = rewardByValidator.get(validatorAddr) || '0';
+                const commissionRate = validatorInfo
+                    ? parseFloat(validatorInfo.commission.commission_rates.rate) * 100
+                    : 0;
 
-                // Find rewards for this validator
-                const validatorRewards = rewardsData.rewards.find(
-                    (r: any) => r.validator_address === validatorAddr
-                );
-                const rewardAmount = validatorRewards?.reward?.find((r: any) => r.denom === 'ulmn')?.amount || '0';
-
-                if (validatorInfo) {
-                    const commissionRate = parseFloat(validatorInfo.commission.commission_rates.rate) * 100;
-
-                    stakes.push({
-                        validator: {
-                            address: validatorAddr,
-                            moniker: validatorInfo.description.moniker,
-                            commission: `${commissionRate.toFixed(1)}%`,
-                            votingPower: (Number(validatorInfo.tokens) / 1000000).toFixed(0),
-                            status: validatorInfo.status === 'BOND_STATUS_BONDED' ? 'active' : 'inactive',
-                            apr: '12.5%' // Calculate from chain params if available
-                        },
-                        amount: (Number(stakedAmount) / 1000000).toFixed(2),
-                        rewards: (parseFloat(rewardAmount) / 1000000).toFixed(6),
-                        validatorAddress: validatorAddr
-                    });
-                }
+                /* A delegation whose validator is missing from the set is still
+                   the user's money, so it is listed with what is known rather
+                   than dropped. */
+                stakes.push({
+                    validator: {
+                        address: validatorAddr,
+                        moniker: validatorInfo?.description?.moniker || `${validatorAddr.slice(0, 14)}…`,
+                        commission: validatorInfo ? `${commissionRate.toFixed(1)}%` : '—',
+                        votingPower: validatorInfo ? (Number(validatorInfo.tokens) / 1000000).toFixed(0) : '0',
+                        status: validatorInfo?.status === 'BOND_STATUS_BONDED' ? 'active' : 'inactive',
+                        apr: '12.5%' // Calculate from chain params if available
+                    },
+                    amount: (Number(stakedAmount) / 1000000).toFixed(2),
+                    amountUlmn: String(stakedAmount),
+                    rewards: (parseFloat(rewardAmount) / 1000000).toFixed(6),
+                    validatorAddress: validatorAddr
+                });
             }
 
             setUserStakes(stakes);
@@ -119,11 +158,10 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
             const totalRewardsAmount = rewardsData.total.find((r: any) => r.denom === 'ulmn')?.amount || '0';
             setTotalRewards((parseFloat(totalRewardsAmount) / 1000000).toFixed(6));
 
-            // Fetch Unbonding
-            const unbondingData = await fetchUnbondingDelegations(walletKeys.address);
+            // Unbonding entries, resolved from the same indexed validator set
             const processedUnbonding: UnbondingEntry[] = [];
             for (const unbond of unbondingData) {
-                const valInfo = await fetchValidator(unbond.validator_address);
+                const valInfo = validatorByAddress.get(unbond.validator_address);
                 for (const entry of unbond.entries) {
                     processedUnbonding.push({
                         validatorMoniker: valInfo?.description?.moniker || 'Unknown',
@@ -164,13 +202,10 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
 
             setValidators(formattedValidators);
 
-            // Also fetch wallet balance for validation
-            const res = await fetch(`https://rest.cosmos.directory/lumen/cosmos/bank/v1beta1/balances/${walletKeys.address}`);
-            if (res.ok) {
-                const data = await res.json();
-                const bal = data.balances.find((b: any) => b.denom === 'ulmn')?.amount || '0';
-                setBalanceUlmn(bal);
-            }
+            /* Balance goes through NetworkManager like every other query: this
+               call used to be pinned to one hardcoded provider, so it kept
+               reading a node the user had switched away from. */
+            setBalanceUlmn(await fetchBalanceUlmn(walletKeys.address));
         } catch (error) {
             console.error('Error fetching validators:', error);
         }
@@ -186,9 +221,11 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
         setLoading(true);
 
         try {
-            const amountUlmn = (parseFloat(amount) * 1000000).toString();
-            if (BigInt(amountUlmn) > BigInt(balanceUlmn)) {
-                throw new Error("Insufficient balance");
+            const amountUlmn = BigInt(Math.round(parseFloat(amount) * 1_000_000)).toString();
+            if (BigInt(amountUlmn) > maxStakableUlmn) {
+                throw new Error(
+                    `Insufficient balance. You can stake up to ${maxStakableLmn.toFixed(6)} LMN, keeping ${Number(feeParams.delegateFeeUlmn) / 1_000_000} LMN for the network fee.`
+                );
             }
 
             const txHash = await delegateTokens(walletKeys, selectedValidator.address, amountUlmn);
@@ -205,12 +242,14 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                 status: 'success'
             });
 
-            setToastMessage(`Staked successfully!`);
-            setToastType('success');
-            setShowToast(true);
             setAmount('');
             setSelectedValidator(null);
             setStep('dashboard');
+
+            const committed = await waitForTxCommit(txHash);
+            setToastMessage(committed ? 'Staked successfully!' : 'Stake submitted — still confirming.');
+            setToastType('success');
+            setShowToast(true);
 
             // Refresh data
             await fetchUserStakingData();
@@ -235,10 +274,18 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
         setShowUnstakeConfirm(false);
 
         try {
-            const amountUlmn = (parseFloat(stakeToUnstake.amount) * 1000000).toString();
-            const txHash = await undelegateTokens(walletKeys, stakeToUnstake.validatorAddress, amountUlmn);
+            /* Unstake exactly what is delegated. This used to re-derive the
+               amount from the displayed string, which is rounded to two
+               decimals — so an unstake either asked for more than the
+               delegation (refused) or left dust behind. */
+            const txHash = await undelegateTokens(walletKeys, stakeToUnstake.validatorAddress, stakeToUnstake.amountUlmn);
 
-            setToastMessage(`Unstaked successfully! Asset is now unbonding. TX: ${txHash.slice(0, 8)}...`);
+            const committed = await waitForTxCommit(txHash);
+            setToastMessage(
+                committed
+                    ? `Unstaked successfully! Asset is now unbonding. TX: ${txHash.slice(0, 8)}...`
+                    : `Unstake submitted — still confirming. TX: ${txHash.slice(0, 8)}...`
+            );
             setToastType('success');
             setShowToast(true);
 
@@ -257,7 +304,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
 
     const handleClaimRewards = async (validatorAddress: string) => {
         if (!walletKeys) return;
-        setLoading(true);
+        setClaimingValidator(validatorAddress);
 
         try {
             const txHash = await claimRewards(walletKeys, validatorAddress);
@@ -274,7 +321,10 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                 status: 'success'
             });
 
-            setToastMessage(`Rewards claimed!`);
+            /* Wait for the block before refreshing, otherwise the refresh reads
+               the pre-claim state and the rewards look untouched. */
+            const committed = await waitForTxCommit(txHash);
+            setToastMessage(committed ? 'Rewards claimed!' : 'Claim submitted — still confirming.');
             setToastType('success');
             setShowToast(true);
 
@@ -283,8 +333,53 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
         } catch (error: any) {
             console.error('Claim rewards error:', error);
             setToastMessage(error.message || 'Failed to claim rewards');
+            setToastType('error');
+            setShowToast(true);
         } finally {
-            setLoading(false);
+            setClaimingValidator(null);
+        }
+    };
+
+    const handleClaimAllRewards = async () => {
+        if (!walletKeys || claimableStakes.length === 0) return;
+        setClaimingAll(true);
+
+        try {
+            const hashes = await claimAllRewards(
+                walletKeys,
+                claimableStakes.map((stake) => stake.validatorAddress)
+            );
+
+            for (const hash of hashes) {
+                HistoryManager.saveTransaction(walletKeys.address, {
+                    hash,
+                    height: "...",
+                    timestamp: new Date().toISOString(),
+                    type: 'claim',
+                    amount: 'Checking...',
+                    denom: 'LMN',
+                    counterparty: 'Rewards',
+                    status: 'success'
+                });
+            }
+
+            const committed = await waitForTxCommit(hashes[hashes.length - 1]);
+            setToastMessage(
+                committed
+                    ? `Claimed rewards from ${claimableStakes.length} validators!`
+                    : 'Claim submitted — still confirming.'
+            );
+            setToastType('success');
+            setShowToast(true);
+
+            await fetchUserStakingData();
+        } catch (error: any) {
+            console.error('Claim all rewards error:', error);
+            setToastMessage(error.message || 'Failed to claim rewards');
+            setToastType('error');
+            setShowToast(true);
+        } finally {
+            setClaimingAll(false);
         }
     };
 
@@ -541,26 +636,51 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                                 {fetching ? (
                                     <div className="text-center py-10 opacity-50"><RefreshCw className="w-8 h-8 mx-auto mb-2 animate-spin text-primary" /></div>
                                 ) : hasStakes ? (
-                                    userStakes.map((stake, idx) => (
-                                        <div key={idx} className="bg-surface border border-border rounded-xl p-4 group">
-                                            <div className="flex items-center justify-between mb-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-9 h-9 bg-green-500/10 text-green-500 rounded-xl flex items-center justify-center"><CheckCircle2 size={18} /></div>
-                                                    <div>
-                                                        <p className="font-bold text-sm">{stake.validator.moniker}</p>
-                                                        <p className="text-[10px] text-green-500 font-bold">+{stake.rewards} LMN Accumulated</p>
-                                                    </div>
+                                    <>
+                                        {/* One transaction for every validator at once. Withdrawing
+                                            rewards is not a priced message, so the batch is free. */}
+                                        <div className="bg-surface border border-border rounded-xl p-4 space-y-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[var(--text-dim)]">Total claimable</p>
+                                                    <p className="text-lg font-black text-green-500 truncate">+{totalRewards} LMN</p>
+                                                </div>
+                                                <div className="text-right shrink-0">
+                                                    <p className="text-[10px] text-[var(--text-muted)] font-semibold">
+                                                        {claimableStakes.length} validator{claimableStakes.length === 1 ? '' : 's'}
+                                                    </p>
                                                 </div>
                                             </div>
                                             <button
-                                                onClick={() => handleClaimRewards(stake.validatorAddress)}
-                                                disabled={loading || parseFloat(stake.rewards) === 0}
-                                                className="w-full py-2.5 rounded-lg bg-green-500 text-white text-xs font-bold hover:bg-green-600 transition-all disabled:opacity-30"
+                                                onClick={handleClaimAllRewards}
+                                                disabled={isClaiming || claimableStakes.length === 0}
+                                                className="w-full py-3 rounded-lg bg-green-500 text-white text-xs font-bold hover:bg-green-600 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                                             >
-                                                {loading ? 'Claiming...' : 'Claim Available Rewards'}
+                                                {claimingAll ? 'Claiming all…' : `Withdraw all rewards${claimableStakes.length > 1 ? ` (${claimableStakes.length})` : ''}`}
                                             </button>
                                         </div>
-                                    ))
+
+                                        {userStakes.map((stake, idx) => (
+                                            <div key={idx} className="bg-surface border border-border rounded-xl p-4 group">
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <div className="flex items-center gap-3 min-w-0">
+                                                        <div className="w-9 h-9 shrink-0 bg-green-500/10 text-green-500 rounded-xl flex items-center justify-center"><CheckCircle2 size={18} /></div>
+                                                        <div className="min-w-0">
+                                                            <p className="font-bold text-sm truncate">{stake.validator.moniker}</p>
+                                                            <p className="text-[10px] text-green-500 font-bold">+{stake.rewards} LMN Accumulated</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleClaimRewards(stake.validatorAddress)}
+                                                    disabled={isClaiming || parseFloat(stake.rewards) === 0}
+                                                    className="w-full py-2.5 rounded-lg bg-surfaceHighlight border border-border text-foreground text-xs font-bold hover:border-green-500/50 hover:text-green-500 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                                >
+                                                    {claimingValidator === stake.validatorAddress ? 'Claiming…' : 'Claim from this validator'}
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </>
                                 ) : (
                                     <div className="text-center py-12 text-[var(--text-dim)] text-xs font-semibold">No rewards to claim.</div>
                                 )}
@@ -606,7 +726,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                             <div className="flex items-center justify-between px-1">
                                 <label className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--text-dim)]">Enter Amount</label>
                                 <div className="text-[9px] font-bold text-primary">
-                                    Max: {(Number(balanceUlmn) / 1000000).toFixed(2)} LMN
+                                    Max: {maxStakableLmn.toFixed(2)} LMN
                                 </div>
                             </div>
                             <div className="relative group">
@@ -619,7 +739,7 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                                 />
                                 <div className="absolute right-4 top-1/2 -translate-y-1/2">
                                     <button
-                                        onClick={() => setAmount((Number(balanceUlmn) / 1000000).toString())}
+                                        onClick={() => setAmount(maxStakableLmn.toString())}
                                         className="text-[9px] font-black text-primary uppercase hover:bg-primary/10 px-1.5 py-1 rounded transition-colors"
                                     >MAX</button>
                                 </div>
@@ -641,7 +761,10 @@ export const Staking: React.FC<StakingProps> = ({ walletKeys, onBack }) => {
                         </div>
                     </div>
 
-                    <div className="pb-24 pt-4 shrink-0">
+                    {/* This block does not scroll, so its padding is dead space
+                        rather than scroll runway: pb-24 here ate 96px of a
+                        600px popup and squeezed the form above it. */}
+                    <div className="pb-4 pt-4 shrink-0">
                         <button
                             onClick={() => setStep('confirm')}
                             disabled={!amount || parseFloat(amount) <= 0}
