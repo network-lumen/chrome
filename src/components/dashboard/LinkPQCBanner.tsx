@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { NetworkManager } from '../../modules/sdk/network';
 import type { LumenWallet } from '../../modules/sdk/key-manager';
 import {
     getLinkRequirements,
@@ -170,6 +171,7 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
                     const rawPubKey = (pqcData as any).publicKey || (pqcData as any).public_key;
 
                     const nonce = await computeLinkPowNonce(
+                        wallet.address,
                         rawPubKey,
                         requirements.powBits,
                         (hashCount) => {
@@ -206,7 +208,7 @@ export const LinkPQCBanner: React.FC<LinkPQCBannerProps> = ({ wallet, onWalletUp
 
                     /* Verify Transaction */
                     try {
-                        const API_BASE = "https://rest.cosmos.directory/lumen";
+                        const API_BASE = NetworkManager.getInstance().getQuickRestEndpoint();
                         /* Wait a simplified 2s for propagation before checking */
                         await new Promise(r => setTimeout(r, 2000));
 

@@ -78,7 +78,8 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
     React.useEffect(() => {
         if (!activeKeys) return;
 
-        const fetchBalance = async () => {
+        const fetchBalance = async (force: boolean = false) => {
+            if (!force && document.visibilityState === 'hidden') return;
             try {
                 const endpoint = NetworkManager.getInstance().getQuickRestEndpoint();
                 const res = await fetch(`${endpoint}/cosmos/bank/v1beta1/balances/${activeKeys.address}`);
@@ -104,11 +105,27 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
             }
         };
 
-        fetchBalance();
+        void fetchBalance(true);
 
-        /* Poll every 10 seconds */
-        const interval = setInterval(fetchBalance, 10000);
-        return () => clearInterval(interval);
+        /* Lumen blocks are a few seconds apart, so a 10s poll showed a balance
+           up to two blocks stale and made every confirmation feel late. */
+        const interval = setInterval(() => void fetchBalance(), 5000);
+
+        /* The side panel stays mounted while hidden, where polling is wasted and
+           the first thing the user sees on returning is the stale value. The
+           poll skips hidden ticks; coming back refreshes at once. */
+        const refreshNow = () => void fetchBalance(true);
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'visible') refreshNow();
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        window.addEventListener('focus', refreshNow);
+
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+            window.removeEventListener('focus', refreshNow);
+        };
     }, [activeKeys]);
 
     /* Active Block Scanner Polling (Every 6s) */
@@ -155,10 +172,19 @@ export const WalletTab: React.FC<WalletTabProps> = ({ onWalletReady, activeKeys,
 
         void refreshAssets(true);
         const interval = setInterval(() => {
+            if (document.visibilityState === 'hidden') return;
             void refreshAssets(false);
         }, 15000);
 
-        return () => clearInterval(interval);
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'visible') void refreshAssets(false);
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
     }, [activeKeys, refreshAssets]);
 
     const handleAddToVault = async () => {

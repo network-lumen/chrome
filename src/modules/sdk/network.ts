@@ -33,8 +33,18 @@ export class NetworkManager {
     private lastUpdate: number = 0;
     private UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
+    /**
+     * Resolves once the stored provider choice has been read.
+     *
+     * The constructor used to fire loadSettings() and drop the promise, so any
+     * query made in the first few milliseconds of a popup — which is every
+     * query on the dashboard — ran against the default provider rather than
+     * the one the user had picked.
+     */
+    private readonly ready: Promise<void>;
+
     private constructor() {
-        this.loadSettings();
+        this.ready = this.loadSettings();
     }
 
     public static getInstance(): NetworkManager {
@@ -78,6 +88,7 @@ export class NetworkManager {
     }
 
     public async getRpcEndpoint(): Promise<string> {
+        await this.ready;
         if (this.isAuto) {
             await this.refreshIfNecessary();
         }
@@ -88,6 +99,7 @@ export class NetworkManager {
     }
 
     public async getRestEndpoint(forceSync: boolean = false): Promise<string> {
+        await this.ready;
         if (this.isAuto) {
             await this.refreshIfNecessary(forceSync);
         }
@@ -95,14 +107,28 @@ export class NetworkManager {
     }
 
     /**
-     * Returns the primary REST endpoint immediately for high-speed UI lookups (e.g. Balance).
-     * Bypasses the consensus refresh wait.
+     * Returns the REST endpoint currently in use, without waiting for the
+     * health race that getRestEndpoint() may run first. For high-frequency UI
+     * lookups such as the balance poll.
+     *
+     * It returns the *selected* endpoint, not a hardcoded provider: pinning
+     * this to REST_PROVIDERS[0] meant the balance kept polling one node
+     * whatever the user had chosen in settings and whatever the health check
+     * had found — so a lagging or down first provider froze the displayed
+     * balance while every other screen was up to date.
+     *
+     * It also kicks off a background refresh when the cached choice is stale,
+     * so a dead endpoint gets replaced instead of being polled forever.
      */
     public getQuickRestEndpoint(): string {
-        return REST_PROVIDERS[0].address;
+        if (this.isAuto && Date.now() - this.lastUpdate > this.UPDATE_INTERVAL) {
+            void this.refreshBestRpc().catch(() => { /* keep serving the current endpoint */ });
+        }
+        return this.currentRest;
     }
 
     public async sync() {
+        await this.ready;
         if (!this.isAuto) return;
         await this.refreshBestRpc(true);
     }

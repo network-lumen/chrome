@@ -10,11 +10,29 @@
  * 4. System Event Support: Captures protocol-level transfers (e.g., Block Rewards) that lack standard Tx Hashes.
  */
 
+import { NetworkManager, REST_PROVIDERS, RPC_PROVIDERS } from '../sdk/network';
+
 const STORAGE_KEY_HISTORY = 'lumen_history_v1';
 const HISTORY_LIMIT = 100;
 
-const RPC_BASE = "https://rpc.cosmos.directory/lumen";
-const API_BASE = "https://rest.cosmos.directory/lumen";
+/**
+ * Endpoints come from NetworkManager rather than being pinned to one provider.
+ *
+ * Both were hardcoded to cosmos.directory, so the scanner kept polling that one
+ * node whatever the user had selected in settings and whatever the health check
+ * had found: when it lagged or went down, history simply stopped updating while
+ * the rest of the wallet carried on, which is most of what "the history doesn't
+ * refresh" was.
+ *
+ * These are sync accessors because the scanner runs in tight loops over block
+ * heights; NetworkManager refreshes its choice in the background.
+ */
+const rpcBase = () => {
+    const rest = NetworkManager.getInstance().getQuickRestEndpoint();
+    const provider = REST_PROVIDERS.find((p) => p.address === rest)?.provider;
+    return (RPC_PROVIDERS.find((p) => p.provider === provider) || RPC_PROVIDERS[0]).address;
+};
+const apiBase = () => NetworkManager.getInstance().getQuickRestEndpoint();
 
 export interface Transaction {
     hash: string;
@@ -116,7 +134,7 @@ export class HistoryManager {
             // Query: transfer.recipient = 'address'
             // We request per_page=50, page=1, order=desc (newest first)
             const query = `transfer.recipient='${address}'`;
-            const url = `${RPC_BASE}/tx_search?query="${query}"&prove=true&per_page=50&page=1&order_by="desc"`;
+            const url = `${rpcBase()}/tx_search?query="${query}"&prove=true&per_page=50&page=1&order_by="desc"`;
 
             const pRes = await fetch(url);
             if (!pRes.ok) return;
@@ -150,7 +168,7 @@ export class HistoryManager {
                     // 2. Fetch Timestamp (Lazy Block Fetch)
                     let timestamp = new Date().toISOString();
                     try {
-                        const bRes = await fetch(`${RPC_BASE}/block?height=${height}`);
+                        const bRes = await fetch(`${rpcBase()}/block?height=${height}`);
                         const bJson = await bRes.json();
                         if (bJson.result?.block?.header?.time) {
                             timestamp = bJson.result.block.header.time;
@@ -235,7 +253,7 @@ export class HistoryManager {
             // 1. Get Chain Head (Try API first as it's CORS friendly)
             let latestHeight = 0;
             try {
-                const latestRes = await fetch(`${API_BASE}/cosmos/base/tendermint/v1beta1/blocks/latest`);
+                const latestRes = await fetch(`${apiBase()}/cosmos/base/tendermint/v1beta1/blocks/latest`);
                 if (latestRes.ok) {
                     const latestData = await latestRes.json();
                     latestHeight = parseInt(latestData.block.header.height);
@@ -247,7 +265,7 @@ export class HistoryManager {
             if (latestHeight === 0) {
                 // Fallback to RPC for Height
                 try {
-                    const statusRes = await fetch(`${RPC_BASE}/status`);
+                    const statusRes = await fetch(`${rpcBase()}/status`);
                     if (statusRes.ok) {
                         const statusData = await statusRes.json();
                         latestHeight = parseInt(statusData.result.sync_info.latest_block_height);
@@ -285,14 +303,14 @@ export class HistoryManager {
 
                 // STRATEGY A: RPC Block Results (Events)
                 try {
-                    const resRes = await fetch(`${RPC_BASE}/block_results?height=${height}`);
+                    const resRes = await fetch(`${rpcBase()}/block_results?height=${height}`);
                     if (resRes.ok) {
                         const resData = await resRes.json();
                         if (resData.result) {
                             successRPC = true;
 
                             // Fetch full block for Timestamp & Tx Bytes
-                            const blockRes = await fetch(`${RPC_BASE}/block?height=${height}`);
+                            const blockRes = await fetch(`${rpcBase()}/block?height=${height}`);
                             const blockJson = await blockRes.json();
                             const blockTime = blockJson.result?.block?.header?.time || new Date().toISOString();
                             const blockTxs = blockJson.result?.block?.data?.txs || [];
@@ -325,7 +343,7 @@ export class HistoryManager {
                 // STRATEGY B: REST Raw Block (Fallback)
                 if (!successRPC) {
                     try {
-                        const blockRes = await fetch(`${API_BASE}/cosmos/base/tendermint/v1beta1/blocks/${height}`);
+                        const blockRes = await fetch(`${apiBase()}/cosmos/base/tendermint/v1beta1/blocks/${height}`);
                         if (blockRes.ok) {
                             const blockJson = await blockRes.json();
                             const blk = blockJson.block || blockJson.sdk_block;
