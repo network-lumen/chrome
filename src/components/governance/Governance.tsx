@@ -3,6 +3,10 @@ import { ArrowLeft, Vote, CheckCircle, XCircle, MinusCircle, AlertCircle, Refres
 import type { LumenWallet } from '../../modules/sdk/key-manager';
 import { Toast } from '../common/Toast';
 import { voteOnProposal } from '../../modules/sdk/governance';
+import { NetworkManager } from '../../modules/sdk/network';
+import { getChainFeeParams } from '../../modules/sdk/chain-params';
+import { fetchDelegations } from '../../modules/sdk/staking';
+import { waitForTxCommit } from '../../modules/sdk/tx';
 
 interface GovernanceProps {
     walletKeys: LumenWallet;
@@ -25,7 +29,10 @@ interface Proposal {
     vetoVotesRaw: string;
 }
 
-const API_ENDPOINT = 'https://rest.cosmos.directory/lumen';
+/* Queries go through NetworkManager like the rest of the wallet. This was
+   pinned to one provider, so governance kept reading a node the user had
+   switched away from, and stayed broken whenever that provider lagged. */
+const restEndpoint = () => NetworkManager.getInstance().getQuickRestEndpoint();
 
 export const Governance: React.FC<GovernanceProps> = ({ walletKeys, onBack }) => {
     const [proposals, setProposals] = useState<Proposal[]>([]);
@@ -37,11 +44,40 @@ export const Governance: React.FC<GovernanceProps> = ({ walletKeys, onBack }) =>
     const [toastMessage, setToastMessage] = useState('');
     const [toastType, setToastType] = useState<'success' | 'error'>('success');
 
+    /* Chain v2.0.0 refuses a vote from an account holding less than
+       min_voting_stake_ulmn in delegations. Before, the tally accepted any
+       account with any delegation at all, so this screen never had to ask —
+       and now a vote below the threshold fails at broadcast with a message
+       the user cannot act on. */
+    const [votingPower, setVotingPower] = useState<{ staked: bigint; required: bigint } | null>(null);
+    const meetsVotingStake = !votingPower || votingPower.staked >= votingPower.required;
+
+    useEffect(() => {
+        if (!walletKeys?.address) return;
+        let cancelled = false;
+
+        void (async () => {
+            const [params, delegations] = await Promise.all([
+                getChainFeeParams(),
+                fetchDelegations(walletKeys.address)
+            ]);
+            if (cancelled) return;
+
+            const staked = delegations.reduce(
+                (sum: bigint, d: any) => sum + BigInt(d.balance?.amount || '0'),
+                0n
+            );
+            setVotingPower({ staked, required: params.minVotingStakeUlmn });
+        })();
+
+        return () => { cancelled = true; };
+    }, [walletKeys?.address]);
+
     // Fetch proposals from API
     const fetchProposals = async () => {
         setFetching(true);
         try {
-            const response = await fetch(`${API_ENDPOINT}/cosmos/gov/v1/proposals?proposal_status=2`);
+            const response = await fetch(`${restEndpoint()}/cosmos/gov/v1/proposals?proposal_status=2`);
             if (!response.ok) throw new Error('Failed to fetch proposals');
             
             const data = await response.json();
@@ -115,14 +151,21 @@ export const Governance: React.FC<GovernanceProps> = ({ walletKeys, onBack }) =>
             const txHash = await voteOnProposal(
                 walletKeys,
                 selectedProposal.id,
-                voteOption,
-                API_ENDPOINT
+                voteOption
             );
-            
-            setToastMessage(`Vote submitted! TX: ${txHash.slice(0, 8)}...`);
+
+            /* Wait for the block: the tally is only updated once the vote is in
+               one, so refreshing on the broadcast return re-read the old counts
+               and the vote looked like it had not registered. */
+            const committed = await waitForTxCommit(txHash);
+            setToastMessage(
+                committed
+                    ? `Vote recorded! TX: ${txHash.slice(0, 8)}...`
+                    : `Vote submitted — still confirming. TX: ${txHash.slice(0, 8)}...`
+            );
             setToastType('success');
             setShowToast(true);
-            
+
             // Refresh proposals after voting
             await fetchProposals();
             
@@ -295,12 +338,21 @@ export const Governance: React.FC<GovernanceProps> = ({ walletKeys, onBack }) =>
                                 </button>
                             </div>
 
+                            {!meetsVotingStake && votingPower && (
+                                <div className="mb-3 flex gap-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3">
+                                    <AlertCircle size={14} className="text-yellow-500 shrink-0 mt-0.5" />
+                                    <p className="text-[11px] leading-relaxed text-foreground/80">
+                                        Voting needs at least <span className="font-bold">{(Number(votingPower.required) / 1_000_000).toLocaleString()} LMN</span> delegated.
+                                        You currently have <span className="font-bold">{(Number(votingPower.staked) / 1_000_000).toLocaleString()} LMN</span> staked — stake more to vote.
+                                    </p>
+                                </div>
+                            )}
                             <button
                                 onClick={handleVote}
-                                disabled={!voteOption || loading}
+                                disabled={!voteOption || loading || !meetsVotingStake}
                                 className="w-full bg-gradient-to-r from-primary to-primary-light hover:from-primary-hover hover:to-primary disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl transition-all duration-300 hover:scale-105 active:scale-95"
                             >
-                                {loading ? 'Submitting Vote...' : 'Submit Vote'}
+                                {loading ? 'Submitting Vote...' : !meetsVotingStake ? 'Not enough staked to vote' : 'Submit Vote'}
                             </button>
                         </div>
                     )}

@@ -98,9 +98,16 @@ export interface LinkStatus {
 export async function getLinkRequirements(apiEndpoint?: string): Promise<LinkRequirements> {
     try {
         const { data } = await fetchJsonFromAnyRest('/lumen/pqc/v1/params', apiEndpoint);
+        const rawBits = data.params?.pow_difficulty_bits;
         return {
             minBalance: data.params?.min_balance_for_link?.amount || '1000',
-            powDifficultyBits: data.params?.pow_difficulty_bits || 21
+            /* Chain v2.0.0 ships pow_difficulty_bits at 0 on purpose, because
+               that release changed the link digest to commit to the account
+               address and nonces mined under the old formula must stay valid.
+               `|| 21` read that deliberate 0 as "unset" and mined a 21-bit
+               proof of work the chain does not ask for — seconds of the user's
+               CPU, every link, for nothing. */
+            powDifficultyBits: rawBits === undefined || rawBits === null ? 21 : Number(rawBits)
         };
     } catch (err: any) {
         console.error('[LINK] Failed to fetch requirements:', err);
@@ -131,6 +138,7 @@ export async function checkBalance(address: string, minBalance: string, apiEndpo
  * This may take several seconds depending on difficulty
  */
 export async function computeLinkPowNonce(
+    creator: string, /* bech32 address the key is being linked to */
     pqcPubKey: string, /* Accept hex or base64 */
     difficultyBits: number,
     onProgress?: (hashCount: number) => void
@@ -139,10 +147,16 @@ export async function computeLinkPowNonce(
     if (pubKeyBytes.length === 0) {
         throw new Error("Invalid PQC public key: decoded to 0 bytes");
     }
+    if (!creator) {
+        throw new Error("Missing account address for PoW challenge");
+    }
 
     try {
-        // @ts-ignore - SDK method for PoW computation
-        const nonceBytes = LumenSDK.pqc.computePowNonce(pubKeyBytes, difficultyBits, {
+        /* Chain v2.0.0 hashes creator || "|" || pubKey || nonce, so the solved
+           nonce is bound to the account linking the key. Mining without the
+           creator produced a nonce the chain rejects the moment governance
+           raises pow_difficulty_bits above 0. */
+        const nonceBytes = LumenSDK.pqc.computePowNonce(creator, pubKeyBytes, difficultyBits, {
             onProgress: onProgress
         } as any);
 

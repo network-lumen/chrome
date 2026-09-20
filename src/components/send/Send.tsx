@@ -17,6 +17,7 @@ import {
 } from '../../modules/assets/crossChain';
 import { ContactsModal } from '../contacts/ContactsModal';
 import { HistoryManager } from '../../modules/history/history';
+import { FALLBACK_FEE_PARAMS, getChainFeeParams, type ChainFeeParams } from '../../modules/sdk/chain-params';
 
 interface SendProps {
     activeKeys: LumenWallet;
@@ -131,6 +132,7 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
     const [balance, setBalance] = useState<number>(0);
     const [isBalanceLoading, setIsBalanceLoading] = useState(false);
     const [localError, setLocalError] = useState<string | null>(null);
+    const [feeParams, setFeeParams] = useState<ChainFeeParams>(FALLBACK_FEE_PARAMS);
 
     const historySavedHashRef = useRef<string | null>(null);
 
@@ -153,6 +155,31 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
         [assetContext]
     );
     const availableIbcTargets = assetContext ? assetTargets : dynamicIbcChannels;
+
+    /* The per-message fee is a Lumen charge on the sending account, so it only
+       applies when the asset being moved is the native denom on Lumen itself.
+       A bridged asset held on another chain pays that chain's gas instead. */
+    const paysLumenMessageFee = sourceIsLocal && sourceDenom === 'ulmn';
+    const messageFeeLmn = paysLumenMessageFee ? Number(feeParams.transferFeeUlmn) / 1_000_000 : 0;
+    const minSendLmn = paysLumenMessageFee ? Number(feeParams.minSendUlmn) / 1_000_000 : 0;
+
+    /* Chain v2.0.0 takes the fee from the balance, not from the transaction's
+       fee field, so the largest sendable amount is the balance minus the fee.
+       Offering the whole balance as MAX produced a transaction the ante
+       refused for insufficient funds. */
+    const maxSendable = Math.max(0, balance - messageFeeLmn);
+
+    /* The tax is charged to the recipient (app/send_tax_calc.go), so it comes
+       off what they receive rather than off what the sender pays. */
+    const recipientReceives = (parsed: number) => parsed * (1 - (paysLumenMessageFee ? feeParams.txTaxRate : 0));
+
+    useEffect(() => {
+        let cancelled = false;
+        void getChainFeeParams().then((params) => {
+            if (!cancelled) setFeeParams(params);
+        });
+        return () => { cancelled = true; };
+    }, []);
 
     const displayedError = error || localError;
     const showLinkPqcHint = !!displayedError && /account not linked on chain yet|not linked on chain|missing pqc key|pqc signature required/i.test(displayedError);
@@ -359,8 +386,17 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
             return;
         }
 
-        if (numAmount > balance) {
-            setLocalError(`Insufficient balance. Maximum available: ${formatDisplayAmount(balance)} ${sourceSymbol}`);
+        if (numAmount > maxSendable) {
+            setLocalError(
+                messageFeeLmn > 0
+                    ? `Insufficient balance. Maximum sendable is ${formatDisplayAmount(maxSendable)} ${sourceSymbol}, keeping ${formatDisplayAmount(messageFeeLmn)} ${sourceSymbol} for the network fee.`
+                    : `Insufficient balance. Maximum available: ${formatDisplayAmount(balance)} ${sourceSymbol}`
+            );
+            return;
+        }
+
+        if (minSendLmn > 0 && numAmount < minSendLmn) {
+            setLocalError(`The chain refuses transfers below ${formatDisplayAmount(minSendLmn)} ${sourceSymbol}.`);
             return;
         }
 
@@ -648,10 +684,10 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                         <label className="text-xs font-medium text-[var(--text-muted)]">{amountLabel}</label>
                         <button
                             type="button"
-                            onClick={() => setAmount(formatDisplayAmount(balance))}
+                            onClick={() => setAmount(formatDisplayAmount(maxSendable))}
                             className="text-[10px] font-bold text-primary hover:text-primary-hover transition-colors flex items-center gap-1"
                         >
-                            MAX: {isBalanceLoading ? '...' : formatDisplayAmount(balance)}
+                            MAX: {isBalanceLoading ? '...' : formatDisplayAmount(maxSendable)}
                         </button>
                     </div>
                     <div className="relative">
@@ -720,6 +756,31 @@ export const Send: React.FC<SendProps> = ({ activeKeys, onBack }) => {
                                 <p className="text-[10px] text-primary/60 uppercase font-black tracking-widest">Amount to Send</p>
                                 <p className="text-3xl font-black text-primary">{amount} <span className="text-sm font-bold opacity-70">{sourceSymbol}</span></p>
                             </div>
+
+                            {/* What the sender pays and what the recipient nets are two
+                                different numbers on this chain: the message fee is taken
+                                from the sender on top, the transfer tax from the recipient. */}
+                            {paysLumenMessageFee && (
+                                <div className="bg-surfaceHighlight/50 p-4 rounded-2xl border border-border/30 space-y-2">
+                                    <div className="flex justify-between items-center text-[11px]">
+                                        <span className="text-[var(--text-muted)] font-semibold">Network fee</span>
+                                        <span className="font-bold text-foreground">{formatDisplayAmount(messageFeeLmn)} {sourceSymbol}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-[11px]">
+                                        <span className="text-[var(--text-muted)] font-semibold">Total debited</span>
+                                        <span className="font-bold text-foreground">{formatDisplayAmount(parseFloat(amount || '0') + messageFeeLmn)} {sourceSymbol}</span>
+                                    </div>
+                                    {feeParams.txTaxRate > 0 && (
+                                        <div className="flex justify-between items-center text-[11px] pt-2 border-t border-border/10">
+                                            <span className="text-[var(--text-muted)] font-semibold">
+                                                Recipient receives
+                                                <span className="opacity-60"> (after {(feeParams.txTaxRate * 100).toFixed(2)}% tax)</span>
+                                            </span>
+                                            <span className="font-bold text-foreground">{formatDisplayAmount(recipientReceives(parseFloat(amount || '0')))} {sourceSymbol}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="bg-surfaceHighlight/50 p-4 rounded-2xl border border-border/30 space-y-3">
                                 <div className="space-y-1.5 text-center">
